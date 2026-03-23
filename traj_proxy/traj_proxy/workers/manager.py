@@ -122,14 +122,18 @@ class WorkerManager:
         ray_config = config.get("ray", {})
         num_cpus = ray_config.get("num_cpus", 4)
 
+        # 优先使用环境变量，其次使用配置文件，最后使用默认值
+        working_dir = os.getenv("RAY_WORKING_DIR") or ray_config.get("working_dir", "/app/traj_proxy")
+        pythonpath = os.getenv("RAY_PYTHONPATH") or ray_config.get("pythonpath", "/app/traj_proxy")
+
         # 初始化Ray - 增加稳定性配置
         ray.init(
             ignore_reinit_error=True,
             num_cpus=num_cpus,
             runtime_env={
-                "working_dir": "/app/traj_proxy",
+                "working_dir": working_dir,
                 "env_vars": {
-                    "PYTHONPATH": "/app/traj_proxy"
+                    "PYTHONPATH": pythonpath
                 }
             },
             log_to_driver=True,
@@ -138,7 +142,7 @@ class WorkerManager:
                 "worker_lease_timeout_milliseconds": 10000,
             }
         )
-        logger.info("Ray initialized successfully")
+        logger.info(f"Ray initialized successfully: working_dir={working_dir}, pythonpath={pythonpath}")
 
         self.proxy_workers: List[ray.ActorHandle] = []
         self.transcript_workers: List[ray.ActorHandle] = []

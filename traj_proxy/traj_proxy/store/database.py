@@ -4,12 +4,16 @@ DatabaseManager - 数据库管理器
 负责连接池管理和轨迹记录的存储查询操作。
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from psycopg_pool import AsyncConnectionPool
 from psycopg.rows import dict_row
+from psycopg.types.json import Json
 
 from traj_proxy.exceptions import DatabaseError
-from traj_proxy.proxy_core.context import ProcessContext
+
+# 延迟导入以避免循环导入
+if TYPE_CHECKING:
+    from traj_proxy.proxy_core.context import ProcessContext
 
 
 class DatabaseManager:
@@ -89,9 +93,28 @@ class DatabaseManager:
                 -- 时间索引，用于查询历史
                 CREATE INDEX IF NOT EXISTS request_records_start_time_idx
                     ON request_records (start_time DESC);
+
+                -- 创建 model_registry 表（用于多 Worker 模型配置同步）
+                CREATE TABLE IF NOT EXISTS model_registry (
+                    id SERIAL PRIMARY KEY,
+                    model_name TEXT NOT NULL UNIQUE,
+                    url TEXT NOT NULL,
+                    api_key TEXT NOT NULL,
+                    tokenizer_path TEXT NOT NULL,
+                    token_in_token_out BOOLEAN DEFAULT FALSE,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+
+                -- 模型名称索引
+                CREATE INDEX IF NOT EXISTS model_registry_model_name_idx
+                    ON model_registry (model_name);
+
+                -- 更新时间索引（用于轮询同步）
+                CREATE INDEX IF NOT EXISTS model_registry_updated_at_idx
+                    ON model_registry (updated_at DESC);
             """)
 
-    async def insert_trajectory(self, context: ProcessContext, tokenizer_path: str):
+    async def insert_trajectory(self, context: "ProcessContext", tokenizer_path: str):
         """插入轨迹记录
 
         Args:
@@ -111,30 +134,32 @@ class DatabaseManager:
                         response_ids, start_time, end_time, processing_duration_ms,
                         prompt_tokens, completion_tokens, total_tokens,
                         cache_hit_tokens, error, error_traceback
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                    context.unique_id,
-                    context.request_id,
-                    context.session_id or "",
-                    context.model,
-                    tokenizer_path,
-                    context.messages,
-                    context.prompt_text or "",
-                    context.token_ids or [],
-                    context.full_conversation_text,
-                    context.full_conversation_token_ids,
-                    context.response,
-                    context.response_text,
-                    context.response_ids,
-                    context.start_time,
-                    context.end_time,
-                    context.processing_duration_ms,
-                    context.prompt_tokens,
-                    context.completion_tokens,
-                    context.total_tokens,
-                    context.cache_hit_tokens,
-                    context.error,
-                    context.error_traceback
+                    (
+                        context.unique_id,
+                        context.request_id,
+                        context.session_id or "",
+                        context.model,
+                        tokenizer_path,
+                        Json(context.messages),
+                        context.prompt_text or "",
+                        context.token_ids or [],
+                        context.full_conversation_text,
+                        context.full_conversation_token_ids,
+                        Json(context.response) if context.response else None,
+                        context.response_text,
+                        context.response_ids,
+                        context.start_time,
+                        context.end_time,
+                        context.processing_duration_ms,
+                        context.prompt_tokens,
+                        context.completion_tokens,
+                        context.total_tokens,
+                        context.cache_hit_tokens,
+                        context.error,
+                        context.error_traceback
+                    )
                 )
         except Exception as e:
             raise DatabaseError(f"插入轨迹记录失败: {str(e)}")
@@ -167,60 +192,13 @@ class DatabaseManager:
                             prompt_text, token_ids, full_conversation_text,
                             full_conversation_token_ids, start_time
                         FROM request_records
-                        WHERE session_id = $1
+                        WHERE session_id = %s
                         ORDER BY start_time DESC
-                        LIMIT $2
+                        LIMIT %s
                     """, (session_id, limit))
                     return await cur.fetchall()
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             raise DatabaseError(f"查询 session 记录失败: {str(e)}")
 
-    async def get_trajectory_by_unique_id(
-        self,
-        unique_id: str
-    ) -> Optional[Dict[str, Any]]:
-        """根据 unique_id 获取单条轨迹记录
-
-        Args:
-            unique_id: 唯一 ID (格式: {session_id}#{req_id})
-
-        Returns:
-            轨迹记录字典，如果不存在则返回 None
-
-        Raises:
-            DatabaseError: 当查询失败时抛出
-        """
-        try:
-            async with self.pool.connection() as conn:
-                async with conn.cursor(row_factory=dict_row) as cur:
-                    await cur.execute("""
-                        SELECT * FROM request_records WHERE unique_id = $1
-                    """, (unique_id,))
-                    return await cur.fetchone()
-        except Exception as e:
-            raise DatabaseError(f"查询轨迹记录失败: {str(e)}")
-
-    async def get_trajectory_by_request_id(
-        self,
-        request_id: str
-    ) -> Optional[Dict[str, Any]]:
-        """根据 request_id 获取单条轨迹记录
-
-        Args:
-            request_id: 请求 ID
-
-        Returns:
-            轨迹记录字典，如果不存在则返回 None
-
-        Raises:
-            DatabaseError: 当查询失败时抛出
-        """
-        try:
-            async with self.pool.connection() as conn:
-                async with conn.cursor(row_factory=dict_row) as cur:
-                    await cur.execute("""
-                        SELECT * FROM request_records WHERE request_id = $1
-                    """, (request_id,))
-                    return await cur.fetchone()
-        except Exception as e:
-            raise DatabaseError(f"查询轨迹记录失败: {str(e)}")

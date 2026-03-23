@@ -25,7 +25,7 @@ sys.path.insert(0, str(traj_proxy_dir))
 logger = get_logger(__name__)
 
 
-def load_config(config_path: str = "workers.yaml") -> dict:
+def load_config(config_path: str = "config.yaml") -> dict:
     """
     加载Worker配置
 

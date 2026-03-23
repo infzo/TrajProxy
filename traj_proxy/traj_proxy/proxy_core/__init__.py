@@ -14,6 +14,7 @@ from traj_proxy.proxy_core.processor import Processor
 from traj_proxy.proxy_core.prompt_builder import PromptBuilder
 from traj_proxy.proxy_core.token_builder import TokenBuilder
 from traj_proxy.proxy_core.infer_client import InferClient
+from traj_proxy.proxy_core.processor_manager import ProcessorManager
 import traj_proxy.exceptions as exceptions_module
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "PromptBuilder",
     "TokenBuilder",
     "InferClient",
+    "ProcessorManager",
     "ProxyCoreError",
     "TokenizerNotFoundError",
     "CacheError",

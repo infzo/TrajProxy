@@ -7,22 +7,20 @@ ProxyCore FastAPI路由
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from typing import Dict, Any, Optional
 from traj_proxy.utils.logger import get_logger
-from traj_proxy.proxy_core.worker import get_processor
+from traj_proxy.proxy_core.worker import get_processor_manager
+from traj_proxy.proxy_core.processor_manager import (
+    RegisterModelRequest,
+    RegisterModelResponse,
+    DeleteModelResponse,
+    ListModelsResponse,
+    ModelInfo
+)
+from traj_proxy.exceptions import DatabaseError
 import uuid
 
 router = APIRouter()
+admin_router = APIRouter()
 logger = get_logger(__name__)
-
-
-@router.get("/health")
-async def health():
-    """
-    健康检查接口
-
-    返回:
-        健康状态信息
-    """
-    return {"status": "ok"}
 
 
 @router.post("/chat/completions")
@@ -44,7 +42,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
         # 提取请求参数
         messages = body.get("messages", [])
         model = body.get("model")
-        session_id = body.get("session_id")
+        session_id = request.headers.get("x-session-id")
 
         # 其他请求参数
         request_params = {}
@@ -55,15 +53,20 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
         # 生成 request_id
         request_id = str(uuid.uuid4())
 
-        logger.info(f"处理聊天补全请求: model={model}, messages={len(messages)}, session_id={session_id}")
+        logger.info(f"处理聊天补全请求: model={model}, messages={len(messages)}, session_id={session_id}, headers={request.headers}")
 
-        # 获取 Processor 实例
-        processor = get_processor()
+        # 获取 ProcessorManager 实例
+        processor_manager = get_processor_manager()
 
-        # 更新 model（如果请求中指定了不同的 model）
-        original_model = processor.model
-        if model and model != original_model:
-            processor.model = model
+        # 根据 model 获取对应的 processor
+        try:
+            processor = processor_manager.get_processor_or_raise(model)
+        except ValueError as e:
+            logger.warning(f"模型未注册: {model}, 错误: {str(e)}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"模型 '{model}' 未注册"
+            )
 
         # 处理请求
         context = await processor.process_request(
@@ -73,13 +76,12 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
             **request_params
         )
 
-        # 恢复原始 model
-        processor.model = original_model
-
         # 返回 OpenAI 格式响应
         return context.response
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error(f"聊天补全请求处理失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -92,18 +94,125 @@ async def list_models():
     返回:
         可用模型列表
     """
-    # 获取 Processor 实例中的模型配置
-    processor = get_processor()
-    model_name = processor.model
+    # 获取 ProcessorManager 实例
+    processor_manager = get_processor_manager()
+    model_names = processor_manager.list_models()
 
-    return {
-        "object": "list",
-        "data": [
-            {
-                "id": model_name,
-                "object": "model",
-                "created": 1677610602,
-                "owned_by": "organization-owner"
+    # 构建 OpenAI 格式的响应
+    data = [
+        ModelInfo(id=model_name)
+        for model_name in model_names
+    ]
+
+    return ListModelsResponse(data=data)
+
+
+# ========== 管理接口 ==========
+
+@admin_router.post("/register", response_model=RegisterModelResponse)
+async def register_model(request: RegisterModelRequest):
+    """
+    注册新模型（模型会自动同步到所有 Worker）
+
+    参数:
+        request: 注册模型请求
+
+    返回:
+        注册结果
+    """
+    try:
+        processor_manager = get_processor_manager()
+
+        # 注册模型（会同步持久化到数据库）
+        processor = await processor_manager.register_processor(
+            model_name=request.model_name,
+            url=request.url,
+            api_key=request.api_key,
+            tokenizer_path=request.tokenizer_path,
+            token_in_token_out=request.token_in_token_out,
+            persist_to_db=True
+        )
+
+        logger.info(f"注册模型成功: {request.model_name}")
+
+        return RegisterModelResponse(
+            status="success",
+            model_name=request.model_name,
+            detail={
+                "model": processor.model,
+                "tokenizer_path": processor.tokenizer_path,
+                "token_in_token_out": processor.token_in_token_out,
+                "sync_info": "模型已持久化到数据库，其他 Worker 将在 30 秒内自动同步"
             }
-        ]
-    }
+        )
+
+    except ValueError as e:
+        # 模型已存在
+        logger.warning(f"注册模型失败: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except DatabaseError as e:
+        logger.error(f"数据库错误: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"数据库不可用: {str(e)}")
+    except Exception as e:
+        logger.error(f"注册模型异常: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"注册模型失败: {str(e)}")
+
+
+@admin_router.delete("/{model_name}", response_model=DeleteModelResponse)
+async def delete_model(model_name: str):
+    """
+    删除已注册的模型（会自动从所有 Worker 中删除）
+
+    参数:
+        model_name: 模型名称
+
+    返回:
+        删除结果
+    """
+    try:
+        processor_manager = get_processor_manager()
+
+        deleted = await processor_manager.unregister_processor(model_name, persist_to_db=True)
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"模型 '{model_name}' 不存在")
+
+        logger.info(f"删除模型成功: {model_name}")
+
+        return DeleteModelResponse(
+            status="success",
+            model_name=model_name,
+            deleted=True
+        )
+
+    except HTTPException:
+        raise
+    except DatabaseError as e:
+        logger.error(f"数据库错误: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"数据库不可用: {str(e)}")
+    except Exception as e:
+        logger.error(f"删除模型异常: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除模型失败: {str(e)}")
+
+
+@admin_router.get("")
+async def list_admin_models():
+    """
+    列出所有已注册模型（包含详细信息）
+
+    返回:
+        所有模型的详细信息列表
+    """
+    try:
+        processor_manager = get_processor_manager()
+        models_info = processor_manager.get_all_processors_info()
+
+        return {
+            "status": "success",
+            "count": len(models_info),
+            "models": models_info
+        }
+
+    except Exception as e:
+        logger.error(f"列出模型异常: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"列出模型失败: {str(e)}")
