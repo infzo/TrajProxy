@@ -10,11 +10,20 @@ import os
 # 服务地址配置
 # ============================================
 
+# Nginx 网关地址（完整链路入口）
+NGINX_URL = os.getenv("NGINX_URL", "http://localhost:80")
+
 # TrajProxy Worker 直接访问地址
 PROXY_URL = os.getenv("PROXY_URL", "http://localhost:12300")
 
 # LiteLLM 网关地址
 LITELLM_URL = os.getenv("LITELLM_URL", "http://localhost:4000")
+
+# LiteLLM 认证密钥
+LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", "sk-1234")
+
+# Anthropic API 版本
+ANTHROPIC_VERSION = os.getenv("ANTHROPIC_VERSION", "2023-06-01")
 
 # ============================================
 # 测试模型配置
