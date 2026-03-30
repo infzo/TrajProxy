@@ -39,7 +39,7 @@ TrajProxy 是一个分布式 LLM 请求代理系统，提供 OpenAI 兼容的聊
 
 处理 OpenAI 格式的聊天补全请求，根据模型名路由到对应的处理器。
 
-**接口地址**: `POST /proxy/v1/chat/completions`
+**接口地址**: `POST /v1/chat/completions`
 
 **请求头**:
 | 参数名 | 类型 | 必填 | 说明 |
@@ -127,7 +127,7 @@ curl -X POST http://localhost:4000/v1/chat/completions \
   }'
 
 # 或直接调用 ProxyWorker
-curl -X POST http://localhost:12300/proxy/v1/chat/completions \
+curl -X POST http://localhost:12300/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "x-session-id: app_001;sample_001;task_001" \
   -d '{
@@ -149,7 +149,7 @@ curl -X POST http://localhost:12300/proxy/v1/chat/completions \
 
 返回已注册的模型列表，格式与 OpenAI API 兼容。
 
-**接口地址**: `GET /proxy/v1/models`
+**接口地址**: `GET /models`
 
 **请求参数**: 无
 
@@ -178,7 +178,7 @@ curl -X POST http://localhost:12300/proxy/v1/chat/completions \
 
 动态注册一个新的 LLM 模型。
 
-**接口地址**: `POST /proxy/models/register`
+**接口地址**: `POST /models/register`
 
 **请求头**:
 | 参数名 | 类型 | 必填 | 说明 |
@@ -235,7 +235,7 @@ curl -X POST http://localhost:12300/proxy/v1/chat/completions \
 
 删除已注册的模型。
 
-**接口地址**: `DELETE /proxy/models/{model_name}`
+**接口地址**: `DELETE /models/{model_name}`
 
 **路径参数**:
 | 参数名 | 类型 | 必填 | 说明 |
@@ -267,7 +267,7 @@ curl -X POST http://localhost:12300/proxy/v1/chat/completions \
 
 返回所有已注册模型的详细信息。
 
-**接口地址**: `GET /proxy/models`
+**接口地址**: `GET /models`
 
 **请求参数**: 无
 
@@ -301,7 +301,7 @@ curl -X POST http://localhost:12300/proxy/v1/chat/completions \
 
 根据 session_id 查询完整的请求轨迹记录。
 
-**接口地址**: `GET /transcript/trajectory`
+**接口地址**: `GET /trajectory`
 
 **查询参数**:
 | 参数名 | 类型 | 必填 | 默认值 | 说明 |
@@ -366,7 +366,7 @@ curl -X POST http://localhost:12300/proxy/v1/chat/completions \
 
 **cURL 示例**:
 ```bash
-curl "http://localhost:12300/transcript/trajectory?session_id=app_001;sample_001;task_001&limit=100"
+curl "http://localhost:12300/trajectory?session_id=app_001;sample_001;task_001&limit=100"
 ```
 
 ---
@@ -409,7 +409,7 @@ print(response.json())
 
 # 2. 聊天补全（直接调用 ProxyWorker）
 response = requests.post(
-    f"{WORKER_BASE_URL}/proxy/v1/chat/completions",
+    f"{WORKER_BASE_URL}/v1/chat/completions",
     headers={
         "Content-Type": "application/json",
         "x-session-id": "app_001;sample_001;task_001"
@@ -423,7 +423,7 @@ print(response.json())
 
 # 3. 注册模型
 response = requests.post(
-    f"{WORKER_BASE_URL}/proxy/models/register",
+    f"{WORKER_BASE_URL}/models/register",
     json={
         "model_name": "gpt-4",
         "url": "https://api.openai.com",
@@ -435,7 +435,7 @@ print(response.json())
 
 # 4. 查询轨迹
 response = requests.get(
-    f"{WORKER_BASE_URL}/transcript/trajectory",
+    f"{WORKER_BASE_URL}/trajectory",
     params={
         "session_id": "app_001;sample_001;task_001",
         "limit": 100
@@ -476,7 +476,7 @@ from openai import OpenAI
 
 # ProxyWorker 直接访问地址
 client = OpenAI(
-    base_url="http://localhost:12300/proxy/v1",
+    base_url="http://localhost:12300/v1",
     api_key="any-key"  # ProxyWorker 不验证 API Key
 )
 

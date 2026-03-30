@@ -3,12 +3,12 @@ model_list:
   - model_name: "*"
     litellm_params:
       model: "openai/*"
-      api_base: http://traj_proxy:12300/proxy/v1
+      api_base: http://traj_proxy:12300/v1
       api_key: "sk-1234"
   - model_name: "*"
     litellm_params:
       model: "openai/*"
-      api_base: http://traj_proxy:12301/proxy/v1
+      api_base: http://traj_proxy:12301/v1
       api_key: "sk-1234"
 
 litellm_settings:

@@ -23,7 +23,7 @@ class TestModelsAPI:
         - 响应格式符合 OpenAI /v1/models 规范
         - 至少包含一个模型
         """
-        response = proxy_client.get(f"{PROXY_URL}/proxy/v1/models")
+        response = proxy_client.get(f"{PROXY_URL}/models")
 
         assert response.status_code == 200, f"列出模型失败: {response.text}"
 
@@ -48,7 +48,7 @@ class TestModelsAPI:
         - 返回状态码 200
         - 响应包含模型详细信息
         """
-        response = proxy_client.get(f"{PROXY_URL}/proxy/models")
+        response = proxy_client.get(f"{PROXY_URL}/models")
 
         assert response.status_code == 200, f"列出模型详情失败: {response.text}"
 
@@ -81,7 +81,7 @@ class TestModelsAPI:
 
         # 注册模型
         register_response = proxy_client.post(
-            f"{PROXY_URL}/proxy/models/register",
+            f"{PROXY_URL}/models/register",
             json={
                 "model_name": test_model_name,
                 "url": "http://localhost:1234",  # 测试用的推理服务地址
@@ -106,7 +106,7 @@ class TestModelsAPI:
         assert test_model_name in model_names, f"注册的模型不在列表中: {model_names}"
 
         # 删除模型
-        delete_response = proxy_client.delete(f"{PROXY_URL}/proxy/models/{test_model_name}")
+        delete_response = proxy_client.delete(f"{PROXY_URL}/models/{test_model_name}")
 
         assert delete_response.status_code == 200, f"删除模型失败: {delete_response.text}"
 
@@ -134,7 +134,7 @@ class TestModelsAPI:
         """
         # 尝试注册已存在的模型
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/models/register",
+            f"{PROXY_URL}/models/register",
             json={
                 "model_name": registered_model_name,
                 "url": "http://localhost:1234",
@@ -160,7 +160,7 @@ class TestModelsAPI:
         - 错误信息提示模型不存在
         """
         response = proxy_client.delete(
-            f"{PROXY_URL}/proxy/models/nonexistent_model_xyz"
+            f"{PROXY_URL}/models/nonexistent_model_xyz"
         )
 
         assert response.status_code == 404, f"预期返回 404，实际返回 {response.status_code}"

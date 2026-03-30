@@ -4,26 +4,12 @@ TranscriptProvider FastAPI路由
 处理轨迹记录查询相关路由
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from typing import Dict, Any
 
 from traj_proxy.workers.worker import get_transcript_provider as get_provider
 
-router = APIRouter()
 
-
-@router.get("/health")
-async def health():
-    """
-    健康检查接口
-
-    返回:
-        健康状态信息
-    """
-    return {"status": "ok"}
-
-
-@router.get("/trajectory")
 async def get_trajectory(
     session_id: str,
     limit: int = 10000
@@ -33,7 +19,7 @@ async def get_trajectory(
 
     参数:
         session_id: 会话ID (格式: app_id;sample_id;task_id)
-        limit: 最多返回的记录数，默认为100
+        limit: 最多返回的记录数，默认为10000
 
     返回:
         包含session_id、记录数量和记录列表的字典

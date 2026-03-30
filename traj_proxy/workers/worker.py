@@ -155,11 +155,11 @@ class ProxyWorker:
             """从路径中提取 session_id 并注入到请求头 x-session-id"""
             path = request.url.path
 
-            # 检查是否匹配新格式：/proxy/{session_id}/v1/chat/completions
-            if path.startswith("/proxy/") and "/v1/chat/completions" in path:
+            # 检查是否匹配新格式：/s/{session_id}/v1/chat/completions
+            if path.startswith("/s/") and "/v1/chat/completions" in path:
                 try:
                     parts = path.split("/")
-                    if len(parts) >= 4 and parts[1] == "proxy" and parts[3] == "v1":
+                    if len(parts) >= 4 and parts[1] == "s" and parts[3] == "v1":
                         session_id = parts[2]
                         # 如果 header 中没有 session_id，从路径提取
                         if not request.headers.get("x-session-id"):

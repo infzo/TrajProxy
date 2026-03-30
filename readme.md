@@ -212,7 +212,7 @@ curl http://localhost:4000/health/liveliness
 curl http://localhost:12300/health
 
 # 检查可用模型
-curl http://localhost:12300/proxy/v1/models
+curl http://localhost:12300/models
 ```
 
 ---
@@ -435,12 +435,12 @@ model_list:
   - model_name: "*"
     litellm_params:
       model: "openai/*"
-      api_base: http://traj_proxy:12300/proxy/v1  # 内部 ProxyCore 服务
+      api_base: http://traj_proxy:12300/v1  # 内部 ProxyCore 服务
       api_key: "sk-1234"
   - model_name: "*"
     litellm_params:
       model: "openai/*"
-      api_base: http://traj_proxy:12301/proxy/v1  # 第二个 ProxyCore 实例
+      api_base: http://traj_proxy:12301/v1  # 第二个 ProxyCore 实例
       api_key: "sk-1234"
 
 litellm_settings:
@@ -502,7 +502,7 @@ curl --location 'http://localhost:4000/v1/messages' \
 绕过 LiteLLM 直接访问代理服务：
 
 ```bash
-curl --location 'http://localhost:12300/proxy/v1/chat/completions' \
+curl --location 'http://localhost:12300/v1/chat/completions' \
   --header 'Content-Type: application/json' \
   -H "x-session-id: app_001#sample_001#task_001" \
   --data '{
@@ -541,7 +541,7 @@ print(response.choices[0].message.content)
 ### 案例 5：查询对话历史
 
 ```bash
-curl "http://localhost:12300/transcript/trajectory?session_id=app_001;sample_001;task_001"
+curl "http://localhost:12300/trajectory?session_id=app_001;sample_001;task_001"
 ```
 
 ---
@@ -555,15 +555,13 @@ curl "http://localhost:12300/transcript/trajectory?session_id=app_001;sample_001
 - `GET /health/liveliness` - 健康检查
 
 ### TrajProxy Core（端口 12300-12310）
-- `POST /proxy/v1/chat/completions` - 聊天补全
-- `GET /proxy/v1/models` - 列出已注册模型
-- `POST /proxy/models/register` - 注册新模型
-- `DELETE /proxy/models/{model_name}` - 删除模型
+- `POST /v1/chat/completions` - 聊天补全
+- `POST /s/{session_id}/v1/chat/completions` - 带session_id的聊天补全
+- `GET /models` - 列出已注册模型
+- `POST /models/register` - 注册新模型
+- `DELETE /models/{model_name}` - 删除模型
+- `GET /trajectory` - 查询对话轨迹记录
 - `GET /health` - 健康检查
-
-### TranscriptProvider（端口 12310-12315）
-- `GET /transcript/trajectory` - 查询对话轨迹记录
-- `GET /transcript/health` - 健康检查
 
 ---
 

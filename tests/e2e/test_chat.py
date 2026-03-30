@@ -37,7 +37,7 @@ class TestChatCompletion:
         - 包含有效的响应内容
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,
@@ -94,7 +94,7 @@ class TestChatCompletion:
         - 最后收到 [DONE] 标记
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,
@@ -163,7 +163,7 @@ class TestChatCompletion:
         - 响应格式符合 OpenAI API 规范
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers={"Content-Type": "application/json"},
             json={
                 "model": registered_model_name,
@@ -192,7 +192,7 @@ class TestChatCompletion:
         - 错误信息提示模型未注册
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": "non_existent_model_xyz",

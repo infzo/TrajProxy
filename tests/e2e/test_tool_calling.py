@@ -62,7 +62,7 @@ class TestToolCalling:
         - 响应格式符合 OpenAI API 规范
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,
@@ -106,7 +106,7 @@ class TestToolCalling:
         - 即使有工具定义，tool_choice="none" 也不应触发工具调用
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,
@@ -146,7 +146,7 @@ class TestToolCalling:
         - 返回正常的聊天响应
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,
@@ -181,7 +181,7 @@ class TestToolCalling:
         - tools=[] 等同于不提供 tools 参数
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,
@@ -213,7 +213,7 @@ class TestToolCalling:
         - 响应为 SSE 格式
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,

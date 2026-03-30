@@ -25,7 +25,7 @@ class TestTrajectoryAPI:
         session_id = "nonexistent_session_xyz;sample_001;task_001"
 
         response = proxy_client.get(
-            f"{PROXY_URL}/transcript/trajectory",
+            f"{PROXY_URL}/trajectory",
             params={
                 "session_id": session_id,
                 "limit": 100
@@ -59,7 +59,7 @@ class TestTrajectoryAPI:
         """
         # 发送聊天请求
         chat_response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,
@@ -77,7 +77,7 @@ class TestTrajectoryAPI:
 
         # 查询轨迹记录
         trajectory_response = proxy_client.get(
-            f"{PROXY_URL}/transcript/trajectory",
+            f"{PROXY_URL}/trajectory",
             params={
                 "session_id": unique_session_id,
                 "limit": 10
@@ -96,7 +96,7 @@ class TestTrajectoryAPI:
         if trajectory_data.get("count", 0) == 0:
             time.sleep(2)
             trajectory_response = proxy_client.get(
-                f"{PROXY_URL}/transcript/trajectory",
+                f"{PROXY_URL}/trajectory",
                 params={
                     "session_id": unique_session_id,
                     "limit": 10
@@ -133,7 +133,7 @@ class TestTrajectoryAPI:
         limit = 5
 
         response = proxy_client.get(
-            f"{PROXY_URL}/transcript/trajectory",
+            f"{PROXY_URL}/trajectory",
             params={
                 "session_id": unique_session_id,
                 "limit": limit
@@ -165,7 +165,7 @@ class TestTrajectoryAPI:
         """
         # 发送聊天请求
         chat_response = proxy_client.post(
-            f"{PROXY_URL}/proxy/v1/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers=default_headers,
             json={
                 "model": registered_model_name,
@@ -183,7 +183,7 @@ class TestTrajectoryAPI:
 
         # 查询轨迹
         trajectory_response = proxy_client.get(
-            f"{PROXY_URL}/transcript/trajectory",
+            f"{PROXY_URL}/trajectory",
             params={
                 "session_id": unique_session_id,
                 "limit": 10

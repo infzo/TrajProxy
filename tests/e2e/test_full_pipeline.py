@@ -611,7 +611,7 @@ class TestTrajectoryVerification:
 
         # 查询轨迹记录
         trajectory_response = nginx_client.get(
-            f"{PROXY_URL}/transcript/trajectory",
+            f"{PROXY_URL}/trajectory",
             params={
                 "session_id": unique_session_id,
                 "limit": 10
@@ -630,7 +630,7 @@ class TestTrajectoryVerification:
         if trajectory_data.get("count", 0) == 0:
             time.sleep(2)
             trajectory_response = nginx_client.get(
-                f"{PROXY_URL}/transcript/trajectory",
+                f"{PROXY_URL}/trajectory",
                 params={
                     "session_id": unique_session_id,
                     "limit": 10
@@ -692,7 +692,7 @@ class TestTrajectoryVerification:
 
         # 查询轨迹记录
         trajectory_response = nginx_client.get(
-            f"{PROXY_URL}/transcript/trajectory",
+            f"{PROXY_URL}/trajectory",
             params={
                 "session_id": unique_session_id,
                 "limit": 10
@@ -711,7 +711,7 @@ class TestTrajectoryVerification:
         if trajectory_data.get("count", 0) == 0:
             time.sleep(2)
             trajectory_response = nginx_client.get(
-                f"{PROXY_URL}/transcript/trajectory",
+                f"{PROXY_URL}/trajectory",
                 params={
                     "session_id": unique_session_id,
                     "limit": 10
@@ -732,3 +732,305 @@ class TestTrajectoryVerification:
             f"记录 session_id 不匹配: {record}"
         assert record.get("model") == registered_model_name, \
             f"记录 model 不匹配: {record}"
+
+
+class TestNginxUnifiedEntry:
+    """Nginx 统一入口测试类
+
+    测试 nginx 将非推理请求直接转发到 traj_proxy，
+    而推理请求通过 litellm 转发。
+    """
+
+    # ========== 健康检查测试 ==========
+
+    def test_health_check_via_nginx(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str
+    ):
+        """
+        测试通过 nginx 访问健康检查接口
+
+        验证点:
+        - /health 请求直接转发到 traj_proxy
+        - 返回状态码 200
+        - 返回正确的健康状态
+        """
+        response = nginx_client.get(f"{nginx_url}/health")
+
+        assert response.status_code == 200, f"健康检查失败: {response.text}"
+
+        data = response.json()
+        assert data.get("status") == "ok", f"健康状态错误: {data}"
+
+    # ========== 模型管理 API 测试 ==========
+
+    def test_list_models_via_nginx(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        registered_model_name: str
+    ):
+        """
+        测试通过 nginx 访问模型列表接口
+
+        验证点:
+        - /models 请求直接转发到 traj_proxy
+        - 返回状态码 200
+        - 返回正确的模型列表格式
+        """
+        response = nginx_client.get(f"{nginx_url}/models")
+
+        assert response.status_code == 200, f"获取模型列表失败: {response.text}"
+
+        data = response.json()
+        assert "data" in data, f"响应缺少 data 字段: {data}"
+        assert isinstance(data["data"], list), "data 字段不是列表类型"
+
+        # 验证预置模型在列表中
+        model_ids = [model.get("id") for model in data["data"]]
+        assert registered_model_name in model_ids, \
+            f"预置模型 {registered_model_name} 不在模型列表中: {model_ids}"
+
+    def test_list_admin_models_via_nginx(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        registered_model_name: str
+    ):
+        """
+        测试通过 nginx 访问管理模型列表接口
+
+        验证点:
+        - /models 请求直接转发到 traj_proxy
+        - 返回状态码 200
+        - 返回正确的模型详细信息
+        """
+        response = nginx_client.get(f"{nginx_url}/models")
+
+        assert response.status_code == 200, f"获取管理模型列表失败: {response.text}"
+
+        data = response.json()
+        assert data.get("status") == "success", f"状态错误: {data}"
+        assert "models" in data, f"响应缺少 models 字段: {data}"
+        assert isinstance(data["models"], list), "models 字段不是列表类型"
+
+    # ========== 轨迹查询 API 测试 ==========
+
+    def test_transcript_trajectory_via_nginx(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        openai_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试通过 nginx 访问轨迹查询接口
+
+        验证点:
+        - /trajectory 请求直接转发到 traj_proxy
+        - 返回状态码 200
+        - 返回正确的轨迹数据
+        """
+        # 先发送一个请求生成轨迹数据
+        chat_url = f"{nginx_url}/s/{unique_session_id}/v1/chat/completions"
+        chat_response = nginx_client.post(
+            chat_url,
+            headers=openai_headers,
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "测试轨迹查询"}
+                ],
+                "max_tokens": 20
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+        assert chat_response.status_code == 200, f"聊天请求失败: {chat_response.text}"
+
+        # 等待数据写入
+        time.sleep(1)
+
+        # 通过 nginx 查询轨迹
+        trajectory_response = nginx_client.get(
+            f"{nginx_url}/trajectory",
+            params={
+                "session_id": unique_session_id,
+                "limit": 10
+            }
+        )
+
+        assert trajectory_response.status_code == 200, f"轨迹查询失败: {trajectory_response.text}"
+
+        trajectory_data = trajectory_response.json()
+        assert trajectory_data.get("session_id") == unique_session_id, \
+            f"session_id 不匹配: {trajectory_data}"
+
+    # ========== 推理请求路由测试 ==========
+
+    @pytest.mark.integration
+    def test_openai_inference_via_litellm(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        openai_headers: dict,
+        registered_model_name: str
+    ):
+        """
+        测试 OpenAI 推理请求通过 litellm 转发
+
+        验证点:
+        - /v1/chat/completions 请求转发到 litellm
+        - litellm 再转发到 traj_proxy
+        - 返回正确的响应
+        """
+        response = nginx_client.post(
+            f"{nginx_url}/v1/chat/completions",
+            headers=openai_headers,
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "你好"}
+                ],
+                "max_tokens": 20
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"推理请求失败: {response.text}"
+
+        data = response.json()
+        assert "choices" in data, f"响应缺少 choices 字段: {data}"
+        assert len(data["choices"]) > 0, "choices 为空"
+
+    @pytest.mark.integration
+    def test_claude_inference_via_litellm(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        claude_headers: dict,
+        registered_model_name: str
+    ):
+        """
+        测试 Claude 推理请求通过 litellm 转发
+
+        验证点:
+        - /v1/messages 请求转发到 litellm
+        - litellm 再转发到 traj_proxy
+        - 返回正确的响应
+        """
+        response = nginx_client.post(
+            f"{nginx_url}/v1/messages",
+            headers=claude_headers,
+            json={
+                "model": registered_model_name,
+                "max_tokens": 20,
+                "messages": [
+                    {"role": "user", "content": "你好"}
+                ]
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"推理请求失败: {response.text}"
+
+        data = response.json()
+        assert "content" in data, f"响应缺少 content 字段: {data}"
+        assert "role" in data, f"响应缺少 role 字段: {data}"
+
+    @pytest.mark.integration
+    def test_openai_inference_with_session_via_litellm(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        openai_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试带 session_id 的 OpenAI 推理请求通过 litellm 转发
+
+        验证点:
+        - /s/{session_id}/v1/chat/completions 请求转发到 litellm
+        - session_id 正确传递
+        - 返回正确的响应
+        """
+        response = nginx_client.post(
+            f"{nginx_url}/s/{unique_session_id}/v1/chat/completions",
+            headers=openai_headers,
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "你好"}
+                ],
+                "max_tokens": 20
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"推理请求失败: {response.text}"
+
+        data = response.json()
+        assert "choices" in data, f"响应缺少 choices 字段: {data}"
+
+    @pytest.mark.integration
+    def test_claude_inference_with_session_via_litellm(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        claude_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试带 session_id 的 Claude 推理请求通过 litellm 转发
+
+        验证点:
+        - /s/{session_id}/v1/messages 请求转发到 litellm
+        - session_id 正确传递
+        - 返回正确的响应
+        """
+        response = nginx_client.post(
+            f"{nginx_url}/s/{unique_session_id}/v1/messages",
+            headers=claude_headers,
+            json={
+                "model": registered_model_name,
+                "max_tokens": 20,
+                "messages": [
+                    {"role": "user", "content": "你好"}
+                ]
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"推理请求失败: {response.text}"
+
+        data = response.json()
+        assert "content" in data, f"响应缺少 content 字段: {data}"
+
+    # ========== 负载均衡测试 ==========
+
+    def test_load_balancing_to_multiple_workers(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str
+    ):
+        """
+        测试 nginx 对 traj_proxy 的负载均衡
+
+        验证点:
+        - 多次请求被分发到不同的 worker
+        - 所有请求都能正常响应
+        """
+        success_count = 0
+        total_requests = 10
+
+        for i in range(total_requests):
+            response = nginx_client.get(f"{nginx_url}/health")
+            if response.status_code == 200:
+                success_count += 1
+
+        # 所有请求都应该成功
+        assert success_count == total_requests, \
+            f"负载均衡测试失败: {success_count}/{total_requests} 请求成功"
