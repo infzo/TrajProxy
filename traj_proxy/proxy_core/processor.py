@@ -338,6 +338,13 @@ class Processor:
         # 保存上下文引用（用于后台存储）
         self._stream_context = context
 
+        # 重置 Parser 流式状态
+        self.prompt_builder.reset_streaming_state()
+
+        # 流式解析状态
+        previous_text = ""
+        previous_token_ids = []
+
         logger.info(f"[{unique_id}] 开始流式处理请求: model={self.model}, messages_count={len(messages)}")
 
         try:
@@ -378,33 +385,53 @@ class Processor:
                     )
 
                 # 累积响应
+                current_text = context.stream_buffer_text
                 if chunk_content:
                     context.stream_buffer_text += chunk_content
+                    current_text = context.stream_buffer_text
+
+                current_token_ids = context.stream_buffer_ids.copy()
                 if chunk_token_ids:
                     context.stream_buffer_ids.extend(chunk_token_ids)
+                    current_token_ids = context.stream_buffer_ids
+
+                delta_token_ids = chunk_token_ids or []
+
+                # 使用 Parser 进行流式解析
+                parsed_content, parsed_tool_calls, reasoning_delta = self.prompt_builder.process_streaming_parse(
+                    delta_text=chunk_content or "",
+                    context=context,
+                    previous_text=previous_text,
+                    current_text=current_text,
+                    previous_token_ids=previous_token_ids,
+                    current_token_ids=current_token_ids,
+                    delta_token_ids=delta_token_ids
+                )
+
+                # 更新解析状态
+                previous_text = current_text
+                previous_token_ids = current_token_ids.copy()
+
+                # 使用解析结果覆盖原始内容
+                effective_content = parsed_content
+                effective_tool_calls = parsed_tool_calls or tool_calls_delta
 
                 # 检查是否结束
                 finish_reason = None
                 if self._is_stream_finished(infer_chunk):
-                    finish_reason = self._get_finish_reason(infer_chunk)
+                    # 尝试从 Parser 获取结束原因
+                    parser_finish = self.prompt_builder.get_finish_reason_from_parser(context)
+                    finish_reason = parser_finish or self._get_finish_reason(infer_chunk)
                     context.stream_finished = True
 
                 # 构建并发送 OpenAI 流式响应块
-                if tool_calls_delta:
-                    # 有 tool_calls 的情况
-                    openai_chunk = self.prompt_builder.build_stream_chunk(
-                        content=chunk_content,
-                        context=context,
-                        finish_reason=finish_reason,
-                        tool_calls_delta=tool_calls_delta
-                    )
-                else:
-                    # 普通内容
-                    openai_chunk = self.prompt_builder.build_stream_chunk(
-                        content=chunk_content,
-                        context=context,
-                        finish_reason=finish_reason
-                    )
+                openai_chunk = self.prompt_builder.build_stream_chunk(
+                    content=effective_content,
+                    context=context,
+                    finish_reason=finish_reason,
+                    tool_calls_delta=effective_tool_calls,
+                    reasoning_delta=reasoning_delta
+                )
 
                 context.stream_chunk_count += 1
                 yield openai_chunk
