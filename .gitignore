@@ -145,7 +145,11 @@ env.bak/
 venv.bak/
 
 # TrajProxy logs
-traj_proxy/logs/
+logs/
+
+# Docker images
+dockers/images/
+*.tar
 
 # Spyder project settings
 .spyderproject

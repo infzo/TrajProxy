@@ -1,0 +1,119 @@
+services:
+  nginx:
+    privileged: true
+    image: nginx:alpine
+    container_name: litellm_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ../configs/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - litellm
+    networks:
+      - litellm-network
+    restart: always
+
+  litellm:
+    privileged: true
+    image: docker.litellm.ai/berriai/litellm:main-stable
+    volumes:
+      - ../configs/litellm.yaml:/app/litellm.yaml
+    command:
+      - "--config=/app/litellm.yaml"
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: "postgresql://llmproxy:dbpassword9090@db:5432/litellm"
+      STORE_MODEL_IN_DB: "True"
+    env_file:
+      - ../.env
+    depends_on:
+      - db
+      - traj_proxy
+    networks:
+      - litellm-network
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  db:
+    privileged: true
+    image: postgres:16
+    restart: always
+    container_name: litellm_db
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: llmproxy
+      POSTGRES_PASSWORD: dbpassword9090
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+    networks:
+      - litellm-network
+
+  prometheus:
+    privileged: true
+    image: prom/prometheus
+    volumes:
+      - prometheus_data:/prometheus
+      - ../configs/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    restart: always
+    networks:
+      - litellm-network
+
+  traj_proxy:
+    privileged: true
+    build:
+      context: ..
+      dockerfile: dockers/Dockerfile
+    container_name: traj_proxy
+    ports:
+      - "12300-12320:12300-12320"
+    volumes:
+      - ../configs/config.yaml:/app/config.yaml
+      - ../logs:/app/logs
+      - /Users/liujiang/.lmstudio/models/mlx-community:/Users/liujiang/.lmstudio/models/mlx-community
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://llmproxy:dbpassword9090@db:5432/traj_proxy
+      - LOG_LEVEL=DEBUG
+      - LOG_DIR=/app/logs
+    depends_on:
+      - db
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:12300/proxy/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - litellm-network
+
+volumes:
+  prometheus_data:
+    driver: local
+  postgres_data:
+    name: litellm_postgres_data
+
+networks:
+  litellm-network:
+    driver: bridge
+    name: litellm-network
