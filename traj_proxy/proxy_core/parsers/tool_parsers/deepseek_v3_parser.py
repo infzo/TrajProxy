@@ -14,7 +14,15 @@ import json
 import uuid
 from typing import Optional, List, Any, Sequence
 
-from ..base import BaseToolParser, ExtractedToolCallInfo, ToolCall, DeltaMessage, DeltaToolCall
+from ..base import (
+    BaseToolParser,
+    ExtractedToolCallInfo,
+    ToolCall,
+    FunctionCall,
+    DeltaMessage,
+    DeltaToolCall,
+    DeltaFunctionCall,
+)
 
 
 class DeepSeekV3ToolParser(BaseToolParser):
@@ -179,8 +187,10 @@ class DeepSeekV3ToolParser(BaseToolParser):
         return ToolCall(
             id=self._generate_tool_call_id(),
             type="function",
-            name=func_name,
-            arguments=arguments
+            function=FunctionCall(
+                name=func_name,
+                arguments=arguments
+            )
         )
 
     def _fix_json(self, json_str: str) -> str:
@@ -300,8 +310,10 @@ class DeepSeekV3ToolParser(BaseToolParser):
                     index=self.current_tool_index,
                     id=self.current_tool_id,
                     type="function",
-                    name=func_name,
-                    arguments=""
+                    function=DeltaFunctionCall(
+                        name=func_name,
+                        arguments=""
+                    )
                 )
             ]
         )
@@ -320,9 +332,9 @@ class DeepSeekV3ToolParser(BaseToolParser):
                 tool_calls=[
                     DeltaToolCall(
                         index=self.current_tool_index,
-                        id=self.current_tool_id,
-                        type="function",
-                        arguments=json_start
+                        function=DeltaFunctionCall(
+                            arguments=json_start
+                        )
                     )
                 ]
             )
@@ -350,9 +362,9 @@ class DeepSeekV3ToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.current_tool_index - 1 if self.brace_count == 0 else self.current_tool_index,
-                            id=self.current_tool_id,
-                            type="function",
-                            arguments=delta_text
+                            function=DeltaFunctionCall(
+                                arguments=delta_text
+                            )
                         )
                     ]
                 )

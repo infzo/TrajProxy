@@ -20,8 +20,10 @@ from ..base import (
     BaseToolParser,
     ExtractedToolCallInfo,
     ToolCall,
+    FunctionCall,
     DeltaMessage,
     DeltaToolCall,
+    DeltaFunctionCall,
 )
 
 
@@ -153,8 +155,10 @@ class Glm4MoeModelToolParser(BaseToolParser):
                 tool_calls.append(ToolCall(
                     id=make_tool_call_id(),
                     type="function",
-                    name=tc_name,
-                    arguments=json.dumps(arg_dict, ensure_ascii=False)
+                    function=FunctionCall(
+                        name=tc_name,
+                        arguments=json.dumps(arg_dict, ensure_ascii=False)
+                    )
                 ))
 
             if len(tool_calls) > 0:
@@ -221,8 +225,10 @@ class Glm4MoeModelToolParser(BaseToolParser):
                     index=self.current_tool_id,
                     id=self._tool_call_ids[self.current_tool_id],
                     type="function",
-                    name=tool_name,
-                    arguments=""
+                    function=DeltaFunctionCall(
+                        name=tool_name,
+                        arguments=""
+                    )
                 )
             ]
         )
@@ -233,7 +239,9 @@ class Glm4MoeModelToolParser(BaseToolParser):
             tool_calls=[
                 DeltaToolCall(
                     index=self.current_tool_id,
-                    arguments=fragment
+                    function=DeltaFunctionCall(
+                        arguments=fragment
+                    )
                 )
             ]
         )

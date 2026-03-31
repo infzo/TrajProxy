@@ -498,7 +498,7 @@ Nginx 配置文件，定义请求路由规则：
 curl --location 'http://localhost:12345/v1/chat/completions' \
   --header 'Content-Type: application/json' \
   -H "Authorization: Bearer sk-1234" \
-  -H "x-session-id: app_001#sample_001#task_001" \
+  -H "x-session-id: app_001,sample_001,task_001" \
   --data '{
     "model": "qwen3.5-2b",
     "messages": [
@@ -533,10 +533,10 @@ curl --location 'http://localhost:12345/v1/messages' \
 
 ### 案例 3：带 session_id 的路径格式
 
-使用路径参数传递 session_id：
+使用路径参数传递 session_id（格式：`{run_id},{sample_id},{task_id}`）：
 
 ```bash
-curl --location 'http://localhost:12345/s/app_001;sample_001;task_001/v1/chat/completions' \
+curl --location 'http://localhost:12345/s/app_001,sample_001,task_001/v1/chat/completions' \
   --header 'Content-Type: application/json' \
   --data '{
     "model": "qwen3.5-2b",
@@ -574,35 +574,7 @@ print(response.choices[0].message.content)
 ### 案例 5：查询对话历史
 
 ```bash
-curl "http://localhost:12345/trajectory?session_id=app_001;sample_001;task_001"
-```
-
-### 案例 4：Python 客户端示例
-
-```python
-import openai
-
-# 配置客户端（通过 LiteLLM）
-client = openai.OpenAI(
-    base_url="http://localhost:4000/v1",
-    api_key="sk-1234"
-)
-
-# 发送请求
-response = client.chat.completions.create(
-    model="qwen3.5-2b",
-    messages=[
-        {"role": "user", "content": "你好！"}
-    ]
-)
-
-print(response.choices[0].message.content)
-```
-
-### 案例 5：查询对话历史
-
-```bash
-curl "http://localhost:12300/trajectory?session_id=app_001;sample_001;task_001"
+curl "http://localhost:12345/trajectory?session_id=app_001,sample_001,task_001"
 ```
 
 ---
@@ -655,7 +627,7 @@ psql -h localhost -U llmproxy -d litellm
 SELECT * FROM request_records ORDER BY start_time DESC LIMIT 10;
 
 # 查询特定会话的记录
-SELECT * FROM request_records WHERE session_id = 'app_001;sample_001;task_001';
+SELECT * FROM request_records WHERE session_id = 'app_001,sample_001,task_001';
 ```
 
 **Docker 容器模式：**
@@ -667,7 +639,7 @@ cd dockers && docker-compose exec db psql -U llmproxy -d litellm
 SELECT * FROM request_records ORDER BY start_time DESC LIMIT 10;
 
 # 查询特定会话的记录
-SELECT * FROM request_records WHERE session_id = 'app_001;sample_001;task_001';
+SELECT * FROM request_records WHERE session_id = 'app_001,sample_001,task_001';
 ```
 
 ### 查看日志

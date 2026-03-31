@@ -13,7 +13,15 @@ import json
 import uuid
 from typing import Optional, List, Sequence
 
-from ..base import BaseToolParser, ExtractedToolCallInfo, ToolCall, DeltaMessage, DeltaToolCall
+from ..base import (
+    BaseToolParser,
+    ExtractedToolCallInfo,
+    ToolCall,
+    FunctionCall,
+    DeltaMessage,
+    DeltaToolCall,
+    DeltaFunctionCall,
+)
 
 
 class Llama3JSONToolParser(BaseToolParser):
@@ -77,8 +85,10 @@ class Llama3JSONToolParser(BaseToolParser):
                 tool_calls.append(ToolCall(
                     id=self._generate_tool_call_id(),
                     type="function",
-                    name=tool_data["name"],
-                    arguments=json.dumps(params, ensure_ascii=False)
+                    function=FunctionCall(
+                        name=tool_data["name"],
+                        arguments=json.dumps(params, ensure_ascii=False)
+                    )
                 ))
 
             # 处理数组格式
@@ -89,8 +99,10 @@ class Llama3JSONToolParser(BaseToolParser):
                         tool_calls.append(ToolCall(
                             id=self._generate_tool_call_id(),
                             type="function",
-                            name=item["name"],
-                            arguments=json.dumps(params, ensure_ascii=False)
+                            function=FunctionCall(
+                                name=item["name"],
+                                arguments=json.dumps(params, ensure_ascii=False)
+                            )
                         ))
 
             content = model_output[:json_start] if json_start > 0 else None
@@ -227,8 +239,10 @@ class Llama3JSONToolParser(BaseToolParser):
                             index=self.current_tool_index,
                             id=self.current_tool_id,
                             type="function",
-                            name=func_name,
-                            arguments=""
+                            function=DeltaFunctionCall(
+                                name=func_name,
+                                arguments=""
+                            )
                         )
                     ]
                 )
@@ -277,8 +291,10 @@ class Llama3JSONToolParser(BaseToolParser):
                             index=self.current_tool_index,
                             id=self.current_tool_id,
                             type="function",
-                            name=self.current_function_name,
-                            arguments=""
+                            function=DeltaFunctionCall(
+                                name=self.current_function_name,
+                                arguments=""
+                            )
                         )
                     ]
                 )
@@ -297,9 +313,9 @@ class Llama3JSONToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.current_tool_index,
-                            id=self.current_tool_id,
-                            type="function",
-                            arguments=delta_text
+                            function=DeltaFunctionCall(
+                                arguments=delta_text
+                            )
                         )
                     ]
                 )

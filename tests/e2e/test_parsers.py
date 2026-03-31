@@ -117,11 +117,12 @@ class TestDeepSeekV3ToolParser:
         assert len(result.tool_calls) == 1
 
         tool_call = result.tool_calls[0]
-        assert tool_call.name == "get_weather"
+        assert tool_call.function is not None
+        assert tool_call.function.name == "get_weather"
         assert tool_call.type == "function"
 
         # 验证参数是合法 JSON
-        args = json.loads(tool_call.arguments)
+        args = json.loads(tool_call.function.arguments)
         assert args["city"] == "北京"
         assert args["unit"] == "celsius"
 
@@ -141,8 +142,8 @@ class TestDeepSeekV3ToolParser:
         assert len(result.tool_calls) == 2
 
         # 验证每个工具调用
-        args1 = json.loads(result.tool_calls[0].arguments)
-        args2 = json.loads(result.tool_calls[1].arguments)
+        args1 = json.loads(result.tool_calls[0].function.arguments)
+        args2 = json.loads(result.tool_calls[1].function.arguments)
         assert args1["city"] == "北京"
         assert args2["city"] == "上海"
 
@@ -164,7 +165,8 @@ class TestDeepSeekV3ToolParser:
 
         assert result.tools_called is True
         assert "好的" in result.content
-        assert result.tool_calls[0].name == "get_weather"
+        assert result.tool_calls[0].function is not None
+        assert result.tool_calls[0].function.name == "get_weather"
 
     def test_no_tool_call(self, parser):
         """
@@ -195,7 +197,8 @@ class TestDeepSeekV3ToolParser:
         result = parser.extract_tool_calls(model_output)
 
         assert result.tools_called is True
-        assert result.tool_calls[0].name == "get_weather"
+        assert result.tool_calls[0].function is not None
+        assert result.tool_calls[0].function.name == "get_weather"
 
     def test_malformed_json_arguments(self, parser):
         """
@@ -262,10 +265,11 @@ class TestQwen3CoderToolParser:
         assert len(result.tool_calls) == 1
 
         tool_call = result.tool_calls[0]
-        assert tool_call.name == "get_weather"
+        assert tool_call.function is not None
+        assert tool_call.function.name == "get_weather"
 
         # 验证参数
-        args = json.loads(tool_call.arguments)
+        args = json.loads(tool_call.function.arguments)
         assert args["city"] == "北京"
         assert args["unit"] == "celsius"
 
@@ -287,8 +291,8 @@ class TestQwen3CoderToolParser:
         assert result.tools_called is True
         assert len(result.tool_calls) == 2
 
-        args1 = json.loads(result.tool_calls[0].arguments)
-        args2 = json.loads(result.tool_calls[1].arguments)
+        args1 = json.loads(result.tool_calls[0].function.arguments)
+        args2 = json.loads(result.tool_calls[1].function.arguments)
         assert args1["city"] == "北京"
         assert args2["city"] == "上海"
 
@@ -329,7 +333,7 @@ class TestQwen3CoderToolParser:
         result = parser.extract_tool_calls(model_output, tools=tools)
 
         assert result.tools_called is True
-        args = json.loads(result.tool_calls[0].arguments)
+        args = json.loads(result.tool_calls[0].function.arguments)
 
         assert args["int_param"] == 42
         assert args["bool_param"] is True
@@ -360,7 +364,8 @@ toral<function=get_weather>
 
         assert result.tools_called is True
         assert "好的" in result.content
-        assert result.tool_calls[0].name == "get_weather"
+        assert result.tool_calls[0].function is not None
+        assert result.tool_calls[0].function.name == "get_weather"
 
     def test_nested_json_parameter(self, parser):
         """
@@ -388,7 +393,7 @@ toral<function=get_weather>
         result = parser.extract_tool_calls(model_output, tools=tools)
 
         assert result.tools_called is True
-        args = json.loads(result.tool_calls[0].arguments)
+        args = json.loads(result.tool_calls[0].function.arguments)
         assert args["config"]["nested"]["deep"] == "value"
         assert args["config"]["items"] == [1, 2, 3]
 
@@ -736,7 +741,7 @@ class TestParserEdgeCases:
         result = deepseek_parser.extract_tool_calls(model_output)
 
         if result.tools_called:
-            args = json.loads(result.tool_calls[0].arguments)
+            args = json.loads(result.tool_calls[0].function.arguments)
             assert args["config"]["nested"]["deep"] == "value"
             assert args["items"] == [1, 2, 3]
 
@@ -750,5 +755,5 @@ class TestParserEdgeCases:
         result = deepseek_parser.extract_tool_calls(model_output)
 
         if result.tools_called:
-            args = json.loads(result.tool_calls[0].arguments)
+            args = json.loads(result.tool_calls[0].function.arguments)
             assert "特殊字符" in args["text"]

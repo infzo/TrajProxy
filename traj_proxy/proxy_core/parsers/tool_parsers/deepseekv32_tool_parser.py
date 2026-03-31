@@ -20,8 +20,10 @@ from ..base import (
     BaseToolParser,
     ExtractedToolCallInfo,
     ToolCall,
+    FunctionCall,
     DeltaMessage,
     DeltaToolCall,
+    DeltaFunctionCall,
 )
 
 
@@ -123,8 +125,10 @@ class DeepSeekV32ToolParser(BaseToolParser):
                     tool_calls.append(ToolCall(
                         id=make_tool_call_id(),
                         type="function",
-                        name=invoke_name,
-                        arguments=json.dumps(param_dict, ensure_ascii=False)
+                        function=FunctionCall(
+                            name=invoke_name,
+                            arguments=json.dumps(param_dict, ensure_ascii=False)
+                        )
                     ))
 
             if not tool_calls:
@@ -288,8 +292,10 @@ class DeepSeekV32ToolParser(BaseToolParser):
                                 index=self.current_tool_id,
                                 id=make_tool_call_id(),
                                 type="function",
-                                name=self.current_function_name,
-                                arguments=""
+                                function=DeltaFunctionCall(
+                                    name=self.current_function_name,
+                                    arguments=""
+                                )
                             )
                         ]
                     )
@@ -304,7 +310,9 @@ class DeepSeekV32ToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.current_tool_id,
-                            arguments="{"
+                            function=DeltaFunctionCall(
+                                arguments="{"
+                            )
                         )
                     ]
                 )
@@ -336,7 +344,9 @@ class DeepSeekV32ToolParser(BaseToolParser):
                         tool_calls=[
                             DeltaToolCall(
                                 index=self.current_tool_id,
-                                arguments="}"
+                                function=DeltaFunctionCall(
+                                    arguments="}"
+                                )
                             )
                         ]
                     )
@@ -399,7 +409,9 @@ class DeepSeekV32ToolParser(BaseToolParser):
                             tool_calls=[
                                 DeltaToolCall(
                                     index=self.current_tool_id,
-                                    arguments=json_fragment
+                                    function=DeltaFunctionCall(
+                                        arguments=json_fragment
+                                    )
                                 )
                             ]
                         )

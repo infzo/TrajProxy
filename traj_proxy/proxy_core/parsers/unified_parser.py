@@ -19,8 +19,10 @@ from .base import (
     BaseToolParser,
     BaseReasoningParser,
     ToolCall,
+    FunctionCall,
     DeltaMessage,
     DeltaToolCall,
+    DeltaFunctionCall,
     ExtractedToolCallInfo,
 )
 

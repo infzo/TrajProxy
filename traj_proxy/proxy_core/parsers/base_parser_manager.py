@@ -89,7 +89,16 @@ class BaseParserManager(ABC, Generic[T]):
             mod = importlib.import_module(module_path)
             parser_cls = getattr(mod, class_name)
             base_class = cls._get_parser_base_class()
-            if not issubclass(parser_cls, base_class):
+
+            # 使用 MRO 检查继承关系，避免模块重复导入导致的类身份不一致问题
+            # 当模块通过不同路径导入时，同一个类可能被认为是不同的对象
+            is_subclass = False
+            for parent in parser_cls.__mro__:
+                if parent.__name__ == base_class.__name__ and parent.__module__ == base_class.__module__:
+                    is_subclass = True
+                    break
+
+            if not is_subclass:
                 raise TypeError(
                     f"{class_name} in {module_path} is not a {base_class.__name__} subclass."
                 )

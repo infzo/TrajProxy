@@ -19,8 +19,10 @@ from ..base import (
     BaseToolParser,
     ExtractedToolCallInfo,
     ToolCall,
+    FunctionCall,
     DeltaMessage,
     DeltaToolCall,
+    DeltaFunctionCall,
 )
 
 
@@ -191,8 +193,10 @@ class Qwen3CoderToolParser(BaseToolParser):
         return ToolCall(
             id=make_tool_call_id(),
             type="function",
-            name=function_name,
-            arguments=json.dumps(param_dict, ensure_ascii=False)
+            function=FunctionCall(
+                name=function_name,
+                arguments=json.dumps(param_dict, ensure_ascii=False)
+            )
         )
 
     def _get_function_calls(self, model_output: str) -> List[str]:
@@ -373,8 +377,10 @@ class Qwen3CoderToolParser(BaseToolParser):
                                 index=self.current_tool_id,
                                 id=make_tool_call_id(),
                                 type="function",
-                                name=self.current_function_name,
-                                arguments=""
+                                function=DeltaFunctionCall(
+                                    name=self.current_function_name,
+                                    arguments=""
+                                )
                             )
                         ]
                     )
@@ -389,7 +395,9 @@ class Qwen3CoderToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.current_tool_id,
-                            arguments="{"
+                            function=DeltaFunctionCall(
+                                arguments="{"
+                            )
                         )
                     ]
                 )
@@ -424,7 +432,9 @@ class Qwen3CoderToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.current_tool_id,
-                            arguments="}"
+                            function=DeltaFunctionCall(
+                                arguments="}"
+                            )
                         )
                     ]
                 )
@@ -497,7 +507,9 @@ class Qwen3CoderToolParser(BaseToolParser):
                             tool_calls=[
                                 DeltaToolCall(
                                     index=self.current_tool_id,
-                                    arguments=json_fragment
+                                    function=DeltaFunctionCall(
+                                        arguments=json_fragment
+                                    )
                                 )
                             ]
                         )

@@ -526,16 +526,18 @@ class TestToolParserResponseFormat:
         # 验证 tool_call 结构
         assert tool_call.id is not None and tool_call.id != "", "tool_call.id 不能为空"
         assert tool_call.type == "function", f"tool_call.type 应为 'function'，实际: {tool_call.type}"
-        assert tool_call.name == "get_weather", f"tool_call.name 应为 'get_weather'，实际: {tool_call.name}"
+        # 使用嵌套的 function 对象
+        assert tool_call.function is not None, "tool_call.function 不能为 None"
+        assert tool_call.function.name == "get_weather", f"tool_call.function.name 应为 'get_weather'，实际: {tool_call.function.name}"
 
         # 验证 arguments 是合法 JSON
-        assert tool_call.arguments is not None, "arguments 不能为 None"
+        assert tool_call.function.arguments is not None, "arguments 不能为 None"
         try:
-            args = json.loads(tool_call.arguments)
+            args = json.loads(tool_call.function.arguments)
             assert args["city"] == "北京", f"city 参数错误: {args.get('city')}"
             assert args["unit"] == "celsius", f"unit 参数错误: {args.get('unit')}"
         except json.JSONDecodeError as e:
-            pytest.fail(f"arguments 不是合法 JSON: {tool_call.arguments}, 错误: {e}")
+            pytest.fail(f"arguments 不是合法 JSON: {tool_call.function.arguments}, 错误: {e}")
 
     def test_non_streaming_multiple_tool_calls_format(self, deepseek_v3_parser):
         """
@@ -557,9 +559,10 @@ class TestToolParserResponseFormat:
         for i, tool_call in enumerate(result.tool_calls):
             assert tool_call.id is not None
             assert tool_call.type == "function"
-            assert tool_call.name == "get_weather"
+            assert tool_call.function is not None
+            assert tool_call.function.name == "get_weather"
 
-            args = json.loads(tool_call.arguments)
+            args = json.loads(tool_call.function.arguments)
             expected_city = "北京" if i == 0 else "上海"
             assert args["city"] == expected_city
 
@@ -584,7 +587,8 @@ class TestToolParserResponseFormat:
         assert result.content is not None, "content 不应为 None"
         assert "好的" in result.content, f"content 内容不正确: {result.content}"
         assert len(result.tool_calls) == 1
-        assert result.tool_calls[0].name == "get_weather"
+        assert result.tool_calls[0].function is not None
+        assert result.tool_calls[0].function.name == "get_weather"
 
     def test_non_streaming_no_tool_call(self, deepseek_v3_parser):
         """
@@ -616,7 +620,8 @@ class TestToolParserResponseFormat:
 
         assert result.tools_called is True
         assert len(result.tool_calls) == 1
-        assert result.tool_calls[0].name == "get_weather"
+        assert result.tool_calls[0].function is not None
+        assert result.tool_calls[0].function.name == "get_weather"
 
     # ==================== 流式响应测试 ====================
 
@@ -780,9 +785,10 @@ class TestReasoningWithToolCalls:
 
         assert result.tools_called is True
         assert len(result.tool_calls) == 1
-        assert result.tool_calls[0].name == "get_weather"
+        assert result.tool_calls[0].function is not None
+        assert result.tool_calls[0].function.name == "get_weather"
 
-        args = json.loads(result.tool_calls[0].arguments)
+        args = json.loads(result.tool_calls[0].function.arguments)
         assert args["city"] == "北京"
 
     def test_combined_response_structure(
@@ -823,8 +829,8 @@ class TestReasoningWithToolCalls:
                     "id": tc.id,
                     "type": tc.type,
                     "function": {
-                        "name": tc.name,
-                        "arguments": tc.arguments
+                        "name": tc.function.name if tc.function else None,
+                        "arguments": tc.function.arguments if tc.function else None
                     }
                 }
                 for tc in tool_result.tool_calls
@@ -876,10 +882,11 @@ class TestReasoningWithToolCalls:
         )
         assert tool_result.tools_called, "应有工具调用"
         assert len(tool_result.tool_calls) == 1
-        assert tool_result.tool_calls[0].name == "get_weather"
+        assert tool_result.tool_calls[0].function is not None
+        assert tool_result.tool_calls[0].function.name == "get_weather"
 
         # 3. 验证参数
-        args = json.loads(tool_result.tool_calls[0].arguments)
+        args = json.loads(tool_result.tool_calls[0].function.arguments)
         assert args["city"] == "北京"
         assert args["unit"] == "celsius"
 
@@ -1236,7 +1243,7 @@ class TestParserEdgeCases:
         result = deepseek_v3_parser.extract_tool_calls(special_output)
 
         if result.tools_called:
-            args = json.loads(result.tool_calls[0].arguments)
+            args = json.loads(result.tool_calls[0].function.arguments)
             assert "特殊字符" in args.get("text", "")
 
     def test_unicode_in_reasoning(self, deepseek_r1_parser):

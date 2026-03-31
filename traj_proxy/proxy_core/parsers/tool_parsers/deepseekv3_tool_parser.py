@@ -19,8 +19,10 @@ from ..base import (
     BaseToolParser,
     ExtractedToolCallInfo,
     ToolCall,
+    FunctionCall,
     DeltaMessage,
     DeltaToolCall,
+    DeltaFunctionCall,
 )
 
 
@@ -155,8 +157,10 @@ class DeepSeekV3ToolParser(BaseToolParser):
                 tool_calls.append(ToolCall(
                     id=make_tool_call_id(),
                     type=tool_type,
-                    name=function_name,
-                    arguments=function_args
+                    function=FunctionCall(
+                        name=function_name,
+                        arguments=function_args
+                    )
                 ))
 
             # 提取工具调用前的内容
@@ -320,8 +324,10 @@ class DeepSeekV3ToolParser(BaseToolParser):
                                 index=self.current_tool_id,
                                 id=make_tool_call_id(),
                                 type="function",
-                                name=function_name,
-                                arguments=""
+                                function=DeltaFunctionCall(
+                                    name=function_name,
+                                    arguments=""
+                                )
                             )
                         ]
                     )
@@ -347,7 +353,9 @@ class DeepSeekV3ToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.current_tool_id,
-                            arguments=cur_arguments
+                            function=DeltaFunctionCall(
+                                arguments=cur_arguments
+                            )
                         )
                     ]
                 )
@@ -364,7 +372,9 @@ class DeepSeekV3ToolParser(BaseToolParser):
                         tool_calls=[
                             DeltaToolCall(
                                 index=self.current_tool_id,
-                                arguments=delta_arguments
+                                function=DeltaFunctionCall(
+                                    arguments=delta_arguments
+                                )
                             )
                         ]
                     )

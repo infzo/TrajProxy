@@ -20,7 +20,15 @@ import ast
 from typing import Optional, List, Any, Sequence
 from xml.parsers.expat import ParserCreate
 
-from ..base import BaseToolParser, ExtractedToolCallInfo, ToolCall, DeltaMessage, DeltaToolCall
+from ..base import (
+    BaseToolParser,
+    ExtractedToolCallInfo,
+    ToolCall,
+    FunctionCall,
+    DeltaMessage,
+    DeltaToolCall,
+    DeltaFunctionCall,
+)
 
 
 class QwenXMLToolParser(BaseToolParser):
@@ -189,8 +197,10 @@ class QwenXMLToolParser(BaseToolParser):
         return ToolCall(
             id=self._generate_tool_call_id(),
             type="function",
-            name=func_name,
-            arguments=json.dumps(params, ensure_ascii=False)
+            function=FunctionCall(
+                name=func_name,
+                arguments=json.dumps(params, ensure_ascii=False)
+            )
         )
 
     def _convert_param_value(
@@ -460,8 +470,10 @@ class QwenXMLToolParser(BaseToolParser):
                             index=self.tool_call_index - 1,
                             id=self.current_tool_id,
                             type="function",
-                            name=function_name,
-                            arguments=""
+                            function=DeltaFunctionCall(
+                                name=function_name,
+                                arguments=""
+                            )
                         )
                     ]
                 )
@@ -493,9 +505,9 @@ class QwenXMLToolParser(BaseToolParser):
                         tool_calls=[
                             DeltaToolCall(
                                 index=self.tool_call_index - 1,
-                                id=self.current_tool_id,
-                                type="function",
-                                arguments=json_start
+                                function=DeltaFunctionCall(
+                                    arguments=json_start
+                                )
                             )
                         ]
                     )
@@ -507,9 +519,9 @@ class QwenXMLToolParser(BaseToolParser):
                         tool_calls=[
                             DeltaToolCall(
                                 index=self.tool_call_index - 1,
-                                id=self.current_tool_id,
-                                type="function",
-                                arguments=json_continue
+                                function=DeltaFunctionCall(
+                                    arguments=json_continue
+                                )
                             )
                         ]
                     )
@@ -551,9 +563,9 @@ class QwenXMLToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.tool_call_index - 1,
-                            id=self.current_tool_id,
-                            type="function",
-                            arguments=delta_data
+                            function=DeltaFunctionCall(
+                                arguments=delta_data
+                            )
                         )
                     ]
                 )
@@ -572,9 +584,9 @@ class QwenXMLToolParser(BaseToolParser):
                         tool_calls=[
                             DeltaToolCall(
                                 index=self.tool_call_index - 1,
-                                id=self.current_tool_id,
-                                type="function",
-                                arguments='"'
+                                function=DeltaFunctionCall(
+                                    arguments='"'
+                                )
                             )
                         ]
                     )
@@ -592,9 +604,9 @@ class QwenXMLToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.tool_call_index - 1,
-                            id=self.current_tool_id,
-                            type="function",
-                            arguments="}"
+                            function=DeltaFunctionCall(
+                                arguments="}"
+                            )
                         )
                     ]
                 )
@@ -603,9 +615,9 @@ class QwenXMLToolParser(BaseToolParser):
                     tool_calls=[
                         DeltaToolCall(
                             index=self.tool_call_index - 1,
-                            id=self.current_tool_id,
-                            type="function",
-                            arguments="{}"
+                            function=DeltaFunctionCall(
+                                arguments="{}"
+                            )
                         )
                     ]
                 )
@@ -620,7 +632,9 @@ class QwenXMLToolParser(BaseToolParser):
                         index=self.tool_call_index - 1,
                         id=self.current_tool_id,
                         type="function",
-                        arguments=""
+                        function=DeltaFunctionCall(
+                            arguments=""
+                        )
                     )
                 ]
             )

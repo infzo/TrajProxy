@@ -47,9 +47,11 @@ class TestModelsAPI:
         验证点:
         - 返回状态码 200
         - 响应包含模型详细信息
+
+        注意: 管理格式路由需要尾部斜杠 /models/
         """
-        # 访问管理格式的模型列表
-        response = proxy_client.get(f"{PROXY_URL}/models")
+        # 访问管理格式的模型列表（需要尾部斜杠）
+        response = proxy_client.get(f"{PROXY_URL}/models/")
 
         assert response.status_code == 200, f"列出模型详情失败: {response.text}"
 
@@ -98,8 +100,8 @@ class TestModelsAPI:
         assert register_data.get("status") == "success", f"注册状态错误: {register_data}"
         assert register_data.get("model_name") == test_model_name, f"模型名称不匹配: {register_data}"
 
-        # 验证模型已注册（访问管理格式的模型列表）
-        list_response = proxy_client.get(f"{PROXY_URL}/models")
+        # 验证模型已注册（访问管理格式的模型列表，需要尾部斜杠）
+        list_response = proxy_client.get(f"{PROXY_URL}/models/")
         assert list_response.status_code == 200
 
         list_data = list_response.json()
@@ -115,8 +117,8 @@ class TestModelsAPI:
         assert delete_data.get("status") == "success", f"删除状态错误: {delete_data}"
         assert delete_data.get("deleted") is True, f"deleted 字段错误: {delete_data}"
 
-        # 验证模型已删除
-        list_response2 = proxy_client.get(f"{PROXY_URL}/models")
+        # 验证模型已删除（访问管理格式的模型列表，需要尾部斜杠）
+        list_response2 = proxy_client.get(f"{PROXY_URL}/models/")
         list_data2 = list_response2.json()
         model_names2 = [m.get("model_name") for m in list_data2.get("models", [])]
         assert test_model_name not in model_names2, f"删除的模型仍在列表中: {model_names2}"
@@ -306,7 +308,7 @@ class TestSessionIdRouting:
         - 模型 key 为 (model_name, model_name)
         """
         response = proxy_client.post(
-            f"{PROXY_URL}/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             json={
                 "model": registered_model_name,
                 "messages": [{"role": "user", "content": "hi"}],
@@ -337,7 +339,7 @@ class TestSessionIdRouting:
         session_id = "test_run,sample_001,task_001"
 
         response = proxy_client.post(
-            f"{PROXY_URL}/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers={"x-session-id": session_id},
             json={
                 "model": registered_model_name,
@@ -368,7 +370,7 @@ class TestSessionIdRouting:
         invalid_session_id = "invalid_session_id_without_comma"
 
         response = proxy_client.post(
-            f"{PROXY_URL}/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             headers={"x-session-id": invalid_session_id},
             json={
                 "model": registered_model_name,
@@ -400,7 +402,7 @@ class TestSessionIdRouting:
         model_with_session = f"{registered_model_name}@test_run,sample_001,task_001"
 
         response = proxy_client.post(
-            f"{PROXY_URL}/chat/completions",
+            f"{PROXY_URL}/v1/chat/completions",
             json={
                 "model": model_with_session,
                 "messages": [{"role": "user", "content": "hi"}],
@@ -507,7 +509,7 @@ class TestSessionIdRouting:
             # 使用不存在的 run_id 请求
             session_id = f"nonexistent_run,sample_001,task_001"
             response = proxy_client.post(
-                f"{PROXY_URL}/chat/completions",
+                f"{PROXY_URL}/v1/chat/completions",
                 headers={"x-session-id": session_id},
                 json={
                     "model": model_name,

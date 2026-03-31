@@ -11,24 +11,69 @@ from typing import Optional, List, Any, Dict
 
 
 # ==================== 数据结构 ====================
+# 参考 vLLM 0.16.0 的 OpenAI 兼容结构设计
+
 
 @dataclass
-class ToolCall:
-    """工具调用"""
-    id: str
-    type: str = "function"
+class FunctionCall:
+    """
+    函数调用（符合OpenAI规范）
+
+    参考 vLLM FunctionCall:
+    - name: str
+    - arguments: str
+    """
     name: str = ""
     arguments: str = ""
 
 
 @dataclass
+class ToolCall:
+    """
+    工具调用（符合OpenAI规范）
+
+    参考 vLLM ToolCall:
+    - id: str
+    - type: Literal["function"]
+    - function: FunctionCall
+
+    注意：使用嵌套的 function 对象，而非扁平的 name/arguments
+    """
+    id: str
+    type: str = "function"
+    function: Optional[FunctionCall] = None
+
+
+@dataclass
+class DeltaFunctionCall:
+    """
+    流式函数调用增量（符合OpenAI规范）
+
+    参考 vLLM DeltaFunctionCall:
+    - name: str | None
+    - arguments: str | None
+    """
+    name: Optional[str] = None
+    arguments: Optional[str] = None
+
+
+@dataclass
 class DeltaToolCall:
-    """流式工具调用增量"""
+    """
+    流式工具调用增量（符合OpenAI规范）
+
+    参考 vLLM DeltaToolCall:
+    - id: str | None
+    - type: Literal["function"] | None
+    - index: int
+    - function: DeltaFunctionCall | None
+
+    注意：使用嵌套的 function 对象
+    """
     id: Optional[str] = None
     type: Optional[str] = None
     index: int = 0
-    name: Optional[str] = None
-    arguments: Optional[str] = None
+    function: Optional[DeltaFunctionCall] = None
 
 
 @dataclass
