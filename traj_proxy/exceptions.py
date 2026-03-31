@@ -50,6 +50,7 @@ class SessionIdError(ProxyCoreError):
 
     当 Session ID 格式不符合规范或无法解析时抛出。
 
-    规范格式: app_id;sample_id;task_id
+    规范格式: {run_id},{sample_id},{task_id}（逗号分隔）
+    示例: my_run,sample_001,task_001
     """
     pass

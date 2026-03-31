@@ -15,25 +15,20 @@ class RouteRegistrar:
     def register_proxy_routes(self):
         """注册 ProxyCore 相关路由"""
         from traj_proxy.proxy_core.routes import (
-            router as proxy_router,
+            chat_router,
+            model_router,
         )
-        from traj_proxy.proxy_core.routes import admin_router
 
-        from traj_proxy.proxy_core.routes import list_models
-
-        # /v1/chat/completions - 无session_id的聊天
-        self.app.include_router(proxy_router, prefix="/v1", tags=["OpenAI Chat"])
+        # /v1/chat/completions - 无session-id的聊天
+        self.app.include_router(chat_router, prefix="/v1", tags=["OpenAI Chat"])
         # /s/{session_id}/v1/chat/completions - 带session_id的聊天
-        self.app.include_router(proxy_router, prefix="/s/{session_id}/v1", tags=["OpenAI Chat (Path-based)"])
+        self.app.include_router(chat_router, prefix="/s/{session_id}/v1", tags=["OpenAI Chat (Path-based)"])
         # /models/* - 模型管理 API
-        self.app.include_router(admin_router, prefix="/models", tags=["Admin"])
-
-        # /models GET - OpenAI 格式的模型列表
-        self.app.get("/models", tags=["Models"])(list_models)
+        self.app.include_router(model_router, prefix="/models", tags=["Admin"])
 
     def register_transcript_routes(self):
         """注册 TranscriptProvider 相关路由"""
-        from traj_proxy.transcript_provider.routes import router as transcript_router
+        from traj_proxy.transcript_provider.routes import transcript_router
 
         # 使用 include_router 保持异常处理一致性
         self.app.include_router(transcript_router, tags=["Transcript"])

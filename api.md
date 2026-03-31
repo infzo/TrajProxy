@@ -39,7 +39,14 @@ TrajProxy 是一个分布式 LLM 请求代理系统，提供 OpenAI 兼容的聊
 
 处理 OpenAI 格式的聊天补全请求，根据模型名路由到对应的处理器。
 
-**接口地址**: `POST /v1/chat/completions`
+**接口地址**:
+- `POST /v1/chat/completions` - 标准接口
+- `POST /s/{session_id}/v1/chat/completions` - 带 session_id 的路径接口
+
+**Session ID 传递方式**（按优先级）:
+1. **路径传递**: `/s/{session_id}/v1/chat/completions` - session_id 直接嵌入 URL 路径
+2. **请求头传递**: `x-session-id` 请求头
+3. **模型名传递**: `model` 参数格式为 `{model_name}@{session_id}`
 
 **请求头**:
 | 参数名 | 类型 | 必填 | 说明 |
@@ -111,10 +118,9 @@ TrajProxy 是一个分布式 LLM 请求代理系统，提供 OpenAI 兼容的聊
 
 **cURL 示例**:
 ```bash
-# 通过 LiteLLM 网关调用
-curl -X POST http://localhost:4000/v1/chat/completions \
+# 方式1：通过请求头传递 session_id
+curl -X POST http://localhost:12300/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-1234" \
   -H "x-session-id: app_001;sample_001;task_001" \
   -d '{
     "model": "qwen3.5-2b",
@@ -126,9 +132,36 @@ curl -X POST http://localhost:4000/v1/chat/completions \
     ]
   }'
 
-# 或直接调用 ProxyWorker
+# 方式2：通过路径传递 session_id
+curl -X POST http://localhost:12300/s/app_001;sample_001;task_001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3.5-2b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好"
+      }
+    ]
+  }'
+
+# 方式3：通过模型名传递 session_id
 curl -X POST http://localhost:12300/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3.5-2b@app_001;sample_001;task_001",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好"
+      }
+    ]
+  }'
+
+# 通过 LiteLLM 网关调用
+curl -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-1234" \
   -H "x-session-id: app_001;sample_001;task_001" \
   -d '{
     "model": "qwen3.5-2b",
@@ -194,8 +227,8 @@ curl -X POST http://localhost:12300/v1/chat/completions \
   "api_key": "sk-xxxxx",
   "tokenizer_path": "/path/to/tokenizer",
   "token_in_token_out": false,
-  "tool_parser": "",
-  "reasoning_parser": ""
+  "tool_parser": "deepseek_v3",
+  "reasoning_parser": "deepseek_r1"
 }
 ```
 
@@ -208,18 +241,44 @@ curl -X POST http://localhost:12300/v1/chat/completions \
 | api_key | string | 是 | API 密钥 |
 | tokenizer_path | string | 是 | Tokenizer 路径（本地路径或 HuggingFace 模型名称）|
 | token_in_token_out | boolean | 否 | 是否使用 Token-in-Token-out 模式，默认 false |
-| tool_parser | string | 否 | Tool Parser 名称，支持: deepseek_v3, deepseek_v31, deepseek_v32, qwen3_coder, qwen_xml, glm45, glm47, llama3_json |
-| reasoning_parser | string | 否 | Reasoning Parser 名称，支持: deepseek_r1, deepseek_v3, deepseek, qwen3, glm45 |
+| tool_parser | string | 否 | Tool Parser 名称，用于解析模型输出的工具调用 |
+| reasoning_parser | string | 否 | Reasoning Parser 名称，用于解析模型的思维链输出 |
+
+**支持的 Tool Parser**:
+| 名称 | 说明 |
+|------|------|
+| deepseek_v3 | DeepSeek V3 工具调用格式 |
+| deepseek_v31 | DeepSeek V3.1 工具调用格式 |
+| deepseek_v32 | DeepSeek V3.2 工具调用格式 |
+| qwen3_coder | Qwen3 Coder 工具调用格式 |
+| qwen_xml | Qwen XML 工具调用格式 |
+| glm45 | GLM-4-5 工具调用格式 |
+| glm47 | GLM-4-7 工具调用格式 |
+| llama3_json | Llama3 JSON 工具调用格式 |
+
+**支持的 Reasoning Parser**:
+| 名称 | 说明 |
+|------|------|
+| deepseek_r1 | DeepSeek R1 思维链格式 |
+| deepseek_v3 | DeepSeek V3 思维链格式 |
+| deepseek | DeepSeek 通用思维链格式 |
+| qwen3 | Qwen3 思维链格式 |
+| glm45 | GLM-4-5 思维链格式 |
 
 **响应示例 (成功)**:
 ```json
 {
   "status": "success",
+  "run_id": "",
   "model_name": "gpt-4",
   "detail": {
+    "run_id": "",
     "model": "gpt-4",
     "tokenizer_path": "/path/to/tokenizer",
-    "token_in_token_out": false
+    "token_in_token_out": false,
+    "tool_parser": "deepseek_v3",
+    "reasoning_parser": "deepseek_r1",
+    "sync_info": "模型已持久化到数据库，其他 Worker 将在 30 秒内自动同步"
   }
 }
 ```
@@ -235,22 +294,19 @@ curl -X POST http://localhost:12300/v1/chat/completions \
 
 删除已注册的模型。
 
-**接口地址**: `DELETE /models/{model_name}`
-
-**路径参数**:
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| model_name | string | 是 | 要删除的模型名称 |
+**接口地址**: `DELETE /models`
 
 **查询参数**:
 | 参数名 | 类型 | 必填 | 默认值 | 说明 |
 |--------|------|------|--------|------|
+| model_name | string | 是 | - | 要删除的模型名称 |
 | run_id | string | 否 | "" | 运行ID，空字符串表示全局模型 |
 
 **响应示例 (成功)**:
 ```json
 {
   "status": "success",
+  "run_id": "",
   "model_name": "gpt-4",
   "deleted": true
 }
@@ -259,7 +315,7 @@ curl -X POST http://localhost:12300/v1/chat/completions \
 **错误响应**:
 ```json
 {
-  "detail": "模型 'gpt-4' 不存在"
+  "detail": "模型 'gpt-4' 不存在 (run_id=)"
 }
 ```
 

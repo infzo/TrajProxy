@@ -5,10 +5,12 @@ ProcessorManager - 多模型处理器管理器
 """
 
 from typing import Dict, Optional, List, Tuple
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import asyncio
 import os
 import traceback
+
+from traj_proxy.utils.validators import validate_run_id, validate_model_name
 
 from traj_proxy.proxy_core.processor import Processor
 from traj_proxy.proxy_core.infer_client import InferClient
@@ -35,6 +37,24 @@ class RegisterModelRequest(BaseModel):
     token_in_token_out: bool = Field(default=False, description="是否使用 Token-in-Token-out 模式")
     tool_parser: str = Field(default="", description="Tool parser 名称")
     reasoning_parser: str = Field(default="", description="Reasoning parser 名称")
+
+    @field_validator('run_id')
+    @classmethod
+    def validate_run_id_field(cls, v):
+        """校验 run_id 格式"""
+        valid, msg = validate_run_id(v)
+        if not valid:
+            raise ValueError(msg)
+        return v
+
+    @field_validator('model_name')
+    @classmethod
+    def validate_model_name_field(cls, v):
+        """校验 model_name 格式"""
+        valid, msg = validate_model_name(v)
+        if not valid:
+            raise ValueError(msg)
+        return v
 
 
 class RegisterModelResponse(BaseModel):
@@ -115,6 +135,8 @@ class ProcessorManager:
     ) -> Processor:
         """创建 Processor 实例的工厂方法
 
+        同时创建关联的 StreamingProcessor 实例。
+
         Args:
             model_name: 模型名称
             url: Infer 服务 URL
@@ -126,7 +148,7 @@ class ProcessorManager:
             reasoning_parser: Reasoning parser 名称
 
         Returns:
-            新创建的 Processor 实例
+            新创建的 Processor 实例（包含 streaming_processor 属性）
         """
         infer_client = InferClient(
             base_url=url,
@@ -146,6 +168,19 @@ class ProcessorManager:
             config=config,
             tool_parser=tool_parser,
             reasoning_parser=reasoning_parser
+        )
+
+        # 创建关联的 StreamingProcessor
+        from traj_proxy.proxy_core.streaming_processor import StreamingProcessor
+        processor.streaming_processor = StreamingProcessor(
+            model=model_name,
+            tokenizer_path=tokenizer_path,
+            prompt_builder=processor.prompt_builder,
+            token_builder=processor.token_builder,
+            infer_client=infer_client,
+            request_repository=self.request_repository,
+            tool_parser_name=tool_parser,
+            reasoning_parser_name=reasoning_parser
         )
 
         return processor
@@ -241,8 +276,8 @@ class ProcessorManager:
             tokenizer_path=config.tokenizer_path,
             token_in_token_out=config.token_in_token_out,
             run_id=config.run_id,
-            tool_parser=getattr(config, 'tool_parser', ''),
-            reasoning_parser=getattr(config, 'reasoning_parser', '')
+            tool_parser=config.tool_parser,
+            reasoning_parser=config.reasoning_parser
         )
 
         key = (config.run_id, config.model_name)
@@ -321,7 +356,9 @@ class ProcessorManager:
                     api_key=api_key,
                     tokenizer_path=resolved_tokenizer_path,
                     token_in_token_out=token_in_token_out,
-                    run_id=run_id
+                    run_id=run_id,
+                    tool_parser=tool_parser,
+                    reasoning_parser=reasoning_parser
                 )
             except Exception as e:
                 # 数据库失败时，回滚本地注册
@@ -446,46 +483,45 @@ class ProcessorManager:
     def get_processor_by_session(self, model_name: str, session_id: str) -> Optional[Processor]:
         """根据 session_id 和 model_name 获取 Processor
 
-        如果 session_id 为空，则 run_id 等于 model_name。
-        如果 run_id 为空，则 run_id 等于 model_name。
+        严格路由：精确匹配 (run_id, model_name)，无回退逻辑。
+        - 如果 session_id 为空，run_id 等于 model_name
+        - 如果 session_id 存在，必须包含逗号分隔符，否则抛出异常
 
         Args:
             model_name: 模型名称
-            session_id: 会话ID，格式为 {run_id};{sample_id};{task_id}
+            session_id: 会话ID，格式为 {run_id},{sample_id},{task_id}
 
         Returns:
             Processor 实例，如果不存在则返回 None
+
+        Raises:
+            ValueError: 如果 session_id 格式无效（存在但不包含逗号）
         """
         # 如果 session_id 为空，run_id 使用 model_name
         if not session_id:
             run_id = model_name
         else:
             run_id = self._extract_run_id(session_id)
-            # 如果 run_id 为空，使用 model_name
+            # session_id 存在但格式无效，抛出异常
             if not run_id:
-                run_id = model_name
+                raise ValueError(
+                    f"session_id 格式无效: '{session_id}'，期望格式为 {{run_id}},{{sample_id}},{{task_id}}"
+                )
 
         processor = self.get_processor(run_id, model_name)
-
-        # 如果找不到特定 run_id 的模型，回退到全局模型
-        if processor is None and run_id != "":
-            processor = self.get_processor("", model_name)
-            if processor:
-                logger.debug(f"使用全局模型: model_name={model_name} (session_id={session_id})")
-
         return processor
 
     def _extract_run_id(self, session_id: str) -> str:
         """从 session_id 提取运行ID
 
         Args:
-            session_id: 会话ID，格式为 {run_id};{sample_id};{task_id}
+            session_id: 会话ID，格式为 {run_id},{sample_id},{task_id}
 
         Returns:
             运行ID
         """
-        if session_id and ';' in session_id:
-            return session_id.split(';')[0]
+        if session_id and ',' in session_id:
+            return session_id.split(',')[0]
         return ""
 
     def get_processor_or_raise(self, run_id: str, model_name: str) -> Processor:

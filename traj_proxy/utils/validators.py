@@ -1,0 +1,68 @@
+"""
+参数校验工具函数
+
+提供 session_id、run_id、model_name 等参数的格式校验。
+"""
+
+import re
+from typing import Optional, Tuple
+
+
+# session_id 正则: 三段逗号分隔，每段非空
+SESSION_ID_PATTERN = re.compile(r'^[^,]+,[^,]+,[^,]+$')
+
+
+def validate_session_id(session_id: Optional[str]) -> Tuple[bool, str]:
+    """
+    校验 session_id 格式
+
+    session_id 格式为 {run_id},{sample_id},{task_id}
+
+    Args:
+        session_id: 会话ID
+
+    Returns:
+        (是否有效, 错误信息)
+    """
+    if session_id is None or session_id == "":
+        return True, ""
+
+    if SESSION_ID_PATTERN.match(session_id):
+        return True, ""
+
+    return False, f"session_id 格式无效: '{session_id}'，期望格式为 {{run_id}},{{sample_id}},{{task_id}}"
+
+
+def validate_run_id(run_id: str) -> Tuple[bool, str]:
+    """
+    校验 run_id 格式
+
+    Args:
+        run_id: 运行ID
+
+    Returns:
+        (是否有效, 错误信息)
+    """
+    if ',' in run_id:
+        return False, "run_id 不能包含逗号"
+
+    if len(run_id) > 50:
+        return False, f"run_id 长度不能超过 50 个字符，当前 {len(run_id)} 个字符"
+
+    return True, ""
+
+
+def validate_model_name(model_name: str) -> Tuple[bool, str]:
+    """
+    校验 model_name 格式
+
+    Args:
+        model_name: 模型名称
+
+    Returns:
+        (是否有效, 错误信息)
+    """
+    if not model_name or not model_name.strip():
+        return False, "model_name 不能为空"
+
+    return True, ""

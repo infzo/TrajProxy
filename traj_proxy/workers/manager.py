@@ -128,6 +128,7 @@ class WorkerManager:
         pythonpath = os.getenv("RAY_PYTHONPATH") or ray_config.get("pythonpath", "/app/traj_proxy")
 
         # 初始化Ray - 增加稳定性配置
+        # models目录已打包到镜像中，需要从runtime_env中排除
         ray.init(
             ignore_reinit_error=True,
             num_cpus=num_cpus,
@@ -135,7 +136,10 @@ class WorkerManager:
                 "working_dir": working_dir,
                 "env_vars": {
                     "PYTHONPATH": pythonpath
-                }
+                },
+                "excludes": [
+                    "/app/models/"
+                ]
             },
             log_to_driver=True,
             _system_config={

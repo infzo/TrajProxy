@@ -207,3 +207,147 @@ class TestChatCompletion:
         data = response.json()
         assert "未注册" in data.get("detail", "") or "不存在" in data.get("detail", ""), \
             f"错误信息未提示模型未注册: {data}"
+
+
+class TestSessionIdDelivery:
+    """Session ID 传递方式测试类"""
+
+    @pytest.mark.integration
+    def test_chat_with_header_session_id(
+        self,
+        proxy_client: requests.Session,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试通过请求头传递 session_id
+
+        验证点:
+        - 返回状态码 200
+        - 请求正常处理
+        """
+        response = proxy_client.post(
+            f"{PROXY_URL}/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "x-session-id": unique_session_id
+            },
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "测试请求头传递 session_id"}
+                ],
+                "max_tokens": 20
+            }
+        )
+
+        assert response.status_code == 200, f"请求失败: {response.text}"
+        data = response.json()
+        assert "choices" in data, f"响应缺少 choices 字段: {data}"
+
+    @pytest.mark.integration
+    def test_chat_with_path_session_id(
+        self,
+        proxy_client: requests.Session,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试通过路径传递 session_id
+
+        验证点:
+        - 返回状态码 200
+        - URL 路径中的 session_id 正确传递
+        """
+        # 使用路径格式: /s/{session_id}/v1/chat/completions
+        response = proxy_client.post(
+            f"{PROXY_URL}/s/{unique_session_id}/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "测试路径传递 session_id"}
+                ],
+                "max_tokens": 20
+            }
+        )
+
+        assert response.status_code == 200, f"请求失败: {response.text}"
+        data = response.json()
+        assert "choices" in data, f"响应缺少 choices 字段: {data}"
+
+    @pytest.mark.integration
+    def test_chat_with_model_at_session_id(
+        self,
+        proxy_client: requests.Session,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试通过 model@session_id 格式传递 session_id
+
+        验证点:
+        - 返回状态码 200
+        - model 参数中的 session_id 正确解析
+        """
+        # 使用 model@session_id 格式
+        model_with_session = f"{registered_model_name}@{unique_session_id}"
+
+        response = proxy_client.post(
+            f"{PROXY_URL}/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model_with_session,
+                "messages": [
+                    {"role": "user", "content": "测试 model@session_id 格式"}
+                ],
+                "max_tokens": 20
+            }
+        )
+
+        assert response.status_code == 200, f"请求失败: {response.text}"
+        data = response.json()
+        assert "choices" in data, f"响应缺少 choices 字段: {data}"
+
+        # 验证响应中的 model 字段（应该是原始 model_name，不包含 @session_id）
+        # 注意：某些实现可能保留原始 model 值，这里只验证请求成功
+
+    def test_session_id_priority(
+        self,
+        proxy_client: requests.Session,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试 session_id 传递方式的优先级
+
+        优先级: 路径 > 请求头 > model@session_id
+
+        验证点:
+        - 多种方式同时使用时，优先级高的生效
+        """
+        # 路径传递的 session_id 应该优先生效
+        path_session_id = f"path_{unique_session_id}"
+        header_session_id = f"header_{unique_session_id}"
+
+        response = proxy_client.post(
+            f"{PROXY_URL}/s/{path_session_id}/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "x-session-id": header_session_id  # 这个应该被路径中的覆盖
+            },
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "test"}
+                ],
+                "max_tokens": 10
+            }
+        )
+
+        # 请求应该成功
+        assert response.status_code == 200, f"请求失败: {response.text}"

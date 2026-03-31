@@ -21,6 +21,8 @@ class ModelConfig:
     run_id: str = ""  # 运行ID，空字符串表示全局模型
     model_name: str = ""
     token_in_token_out: bool = False
+    tool_parser: str = ""  # 工具解析器名称
+    reasoning_parser: str = ""  # 推理解析器名称
     updated_at: Optional[datetime] = None
 
 

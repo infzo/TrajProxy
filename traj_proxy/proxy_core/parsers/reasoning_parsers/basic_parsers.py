@@ -116,25 +116,26 @@ class BaseThinkingReasoningParser(BaseReasoningParser):
         """
         非流式解析推理内容
 
-        基本实现：
-        1. 移除 start_token 之前的内容
-        2. 以 end_token 为界分割 reasoning 和 content
+        与 vLLM BaseThinkingReasoningParser 保持一致。
 
         Returns:
             (reasoning, content): 推理内容和剩余内容
         """
-        # 移除 start_token 之前的内容
-        if self.start_token in model_output:
-            parts = model_output.split(self.start_token, 1)
-            model_output = parts[1] if len(parts) > 1 else ""
+        # 检查并移除 start_token 及其之前的内容
+        model_output_parts = model_output.partition(self.start_token)
+        model_output = (
+            model_output_parts[2] if model_output_parts[1] else model_output_parts[0]
+        )
 
-        # 分割 reasoning 和 content
+        # 对于可能不生成 start_token 的模型，
+        # 假设推理内容总是在开头
         if self.end_token not in model_output:
-            # 没有结束标记，全部作为推理内容
-            return model_output if model_output else None, None
+            return model_output, None
         else:
             reasoning, _, content = model_output.partition(self.end_token)
-            return reasoning if reasoning else None, content if content else None
+            # 如果生成在 end-of-think 后立即停止，返回 None content
+            final_content = content or None
+            return reasoning, final_content
 
     def extract_reasoning_streaming(
         self,
@@ -149,6 +150,7 @@ class BaseThinkingReasoningParser(BaseReasoningParser):
         流式解析推理内容
 
         使用 token IDs 进行精确判断。
+        与 vLLM BaseThinkingReasoningParser 保持一致。
         """
         # 跳过单独的特殊 token
         if len(delta_token_ids) == 1 and (
@@ -204,7 +206,9 @@ class BaseThinkingReasoningParser(BaseReasoningParser):
                 # start 在本次增量，end 未出现
                 return DeltaMessage(reasoning=delta_text)
         else:
-            # 未进入推理区域
+            # 没有找到 start_token
+            # 与 vLLM 保持一致：返回 content
+            # 子类可以重写此行为（如 DeepSeekR1ReasoningParser）
             return DeltaMessage(content=delta_text)
 
 

@@ -11,16 +11,15 @@ from traj_proxy.proxy_core.processor_manager import (
     RegisterModelRequest,
     RegisterModelResponse,
     DeleteModelResponse,
-    ListModelsResponse,
-    ModelInfo
 )
 from traj_proxy.proxy_core.streaming import StreamingResponseGenerator
 from traj_proxy.exceptions import DatabaseError
+from traj_proxy.utils.validators import validate_session_id, validate_model_name
 import traceback
 import uuid
 
-router = APIRouter()
-admin_router = APIRouter()
+chat_router = APIRouter()
+model_router = APIRouter()
 logger = get_logger(__name__)
 
 
@@ -44,7 +43,7 @@ def _get_processor_manager(request: Request):
     return pm
 
 
-@router.post("/chat/completions")
+@chat_router.post("/chat/completions")
 async def chat_completions(request: Request, background_tasks: BackgroundTasks):
     """
     处理聊天补全请求（支持流式和非流式）
@@ -76,6 +75,16 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
             model = parts[0]
             session_id = parts[1]
 
+        # 校验 model_name
+        valid, msg = validate_model_name(model or "")
+        if not valid:
+            raise HTTPException(status_code=422, detail=msg)
+
+        # 校验 session_id
+        valid, msg = validate_session_id(session_id)
+        if not valid:
+            raise HTTPException(status_code=422, detail=msg)
+
         # session_id 可以为空，为空时 run_id 将等于 model_name
 
         # 其他请求参数
@@ -93,7 +102,13 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
         processor_manager = _get_processor_manager(request)
 
         # 根据 session_id 解析 run_id，结合 model_name 获取对应的 processor
-        processor = processor_manager.get_processor_by_session(model, session_id)
+        try:
+            processor = processor_manager.get_processor_by_session(model, session_id)
+        except ValueError as e:
+            # session_id 格式无效
+            logger.warning(f"[{request_id}] session_id 格式无效: {session_id}")
+            raise HTTPException(status_code=400, detail=str(e))
+
         if processor is None:
             logger.warning(f"[{request_id}] 模型未注册: {model}, session_id={session_id}")
             raise HTTPException(
@@ -103,9 +118,10 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
 
         # 根据是否流式选择处理方式
         if stream:
-            # 流式处理
+            # 流式处理 - 使用 StreamingProcessor
+            streaming_processor = processor.streaming_processor
             generator = StreamingResponseGenerator(
-                processor=processor,
+                streaming_processor=streaming_processor,
                 messages=messages,
                 request_id=request_id,
                 session_id=session_id,
@@ -115,9 +131,9 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
             # 注册后台任务：流式结束后存储到数据库
             async def save_stream_record():
                 ctx = generator.get_completed_context()
-                if ctx and processor.request_repository:
+                if ctx and streaming_processor.request_repository:
                     try:
-                        await processor.request_repository.insert(ctx, processor.tokenizer_path)
+                        await streaming_processor.request_repository.insert(ctx, streaming_processor.tokenizer_path)
                         logger.info(f"[{ctx.unique_id}] 流式记录存储成功")
                     except Exception as e:
                         logger.error(f"[{ctx.unique_id}] 流式记录存储失败: {e}", exc_info=True)
@@ -149,33 +165,13 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
         raise
     except Exception as e:
         logger.exception(f"聊天补全请求处理失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/models")
-async def list_models(request: Request):
-    """
-    列出可用模型
-
-    返回:
-        可用模型列表
-    """
-    # 获取 ProcessorManager 实例（从请求上下文）
-    processor_manager = _get_processor_manager(request)
-    model_keys = processor_manager.list_models()
-
-    # 构建 OpenAI 格式的响应，id 格式为 run_id/model_name
-    data = [
-        ModelInfo(id=f"{run_id}/{model_name}" if run_id else model_name)
-        for run_id, model_name in model_keys
-    ]
-
-    return ListModelsResponse(data=data)
+        # 生产环境不返回详细错误信息
+        raise HTTPException(status_code=500, detail="内部服务错误，请查看日志获取详细信息")
 
 
 # ========== 管理接口 ==========
 
-@admin_router.post("/register", response_model=RegisterModelResponse)
+@model_router.post("/register", response_model=RegisterModelResponse)
 async def register_model(request: Request, req: RegisterModelRequest):
     """
     注册新模型（模型会自动同步到所有 Worker）
@@ -232,7 +228,7 @@ async def register_model(request: Request, req: RegisterModelRequest):
         raise HTTPException(status_code=500, detail=f"注册模型失败: {str(e)}")
 
 
-@admin_router.delete("/{model_name}", response_model=DeleteModelResponse)
+@model_router.delete("", response_model=DeleteModelResponse)
 async def delete_model(request: Request, model_name: str, run_id: str = ""):
     """
     删除已注册的模型（会自动从所有 Worker 中删除）
@@ -272,10 +268,10 @@ async def delete_model(request: Request, model_name: str, run_id: str = ""):
         raise HTTPException(status_code=500, detail=f"删除模型失败: {str(e)}")
 
 
-@admin_router.get("/")
-async def list_admin_models(request: Request):
+@model_router.get("")
+async def list_models_admin(request: Request):
     """
-    列出所有已注册模型（包含详细信息）
+    列出所有已注册模型（管理格式，包含详细信息）
 
     返回:
         所有模型的详细信息列表
@@ -288,6 +284,41 @@ async def list_admin_models(request: Request):
             "status": "success",
             "count": len(models_info),
             "models": models_info
+        }
+
+    except Exception as e:
+        logger.error(f"列出模型异常: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"列出模型失败: {str(e)}")
+
+
+# OpenAI 兼容的模型列表路由
+chat_router.get("/models")
+async def list_models_openai(request: Request):
+    """
+    列出所有已注册模型（OpenAI 兼容格式）
+
+    返回:
+        OpenAI 格式的模型列表: {"object": "list", "data": [...]}
+    """
+    try:
+        processor_manager = _get_processor_manager(request)
+        models_info = processor_manager.get_all_processors_info()
+
+        # 转换为 OpenAI 格式
+        model_list = []
+        for info in models_info:
+            if info:
+                model_id = f"{info['run_id']}/{info['model_name']}" if info.get('run_id') else info['model_name']
+                model_list.append({
+                    "id": model_id,
+                    "object": "model",
+                    "created": 1677610602,
+                    "owned_by": "organization-owner"
+                })
+
+        return {
+            "object": "list",
+            "data": model_list
         }
 
     except Exception as e:

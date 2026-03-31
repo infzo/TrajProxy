@@ -8,7 +8,8 @@ services:
     volumes:
       - ../configs/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
-      - litellm
+      litellm:
+        condition: service_healthy
     networks:
       - litellm-network
     restart: always
@@ -28,8 +29,10 @@ services:
     env_file:
       - ../.env
     depends_on:
-      - db
-      - traj_proxy
+      db:
+        condition: service_healthy
+      traj_proxy:
+        condition: service_started
     networks:
       - litellm-network
     healthcheck:
@@ -52,8 +55,8 @@ services:
       POSTGRES_PASSWORD: dbpassword9090
     ports:
       - "5432:5432"
-    volumes:
-      - ../postgres_data:/var/lib/postgresql/data
+    volumes: [ ]
+      # - ../postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
       interval: 1s
@@ -87,7 +90,7 @@ services:
     ports:
       - "12300-12320:12300-12320"
     volumes:
-      - ../traj_proxy:/app/traj_proxy
+      # - ../traj_proxy:/app/traj_proxy
       - ../configs/config.yaml:/app/configs/config.yaml
       - ../logs:/app/logs
     environment:

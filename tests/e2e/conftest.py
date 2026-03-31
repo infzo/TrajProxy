@@ -41,10 +41,10 @@ def unique_session_id() -> str:
     生成唯一的 session_id，确保测试隔离
 
     返回:
-        格式为 {prefix}_{uuid};{sample_id};{task_id} 的唯一 session_id
+        格式为 {prefix}_{uuid},{sample_id},{task_id} 的唯一 session_id
     """
     unique_prefix = f"e2e_{uuid.uuid4().hex[:8]}"
-    return f"{unique_prefix};sample_001;task_001"
+    return f"{unique_prefix},sample_001,task_001"
 
 
 @pytest.fixture

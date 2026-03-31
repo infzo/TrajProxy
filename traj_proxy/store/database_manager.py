@@ -236,9 +236,26 @@ class DatabaseManager:
                     api_key TEXT NOT NULL,
                     tokenizer_path TEXT NOT NULL,
                     token_in_token_out BOOLEAN DEFAULT FALSE,
+                    tool_parser TEXT NOT NULL DEFAULT '',
+                    reasoning_parser TEXT NOT NULL DEFAULT '',
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     CONSTRAINT unique_run_model UNIQUE (run_id, model_name)
                 )
+            """)
+
+            # 兼容性：如果表已存在但没有新列，则添加
+            await conn.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='model_registry' AND column_name='tool_parser') THEN
+                        ALTER TABLE model_registry ADD COLUMN tool_parser TEXT NOT NULL DEFAULT '';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='model_registry' AND column_name='reasoning_parser') THEN
+                        ALTER TABLE model_registry ADD COLUMN reasoning_parser TEXT NOT NULL DEFAULT '';
+                    END IF;
+                END $$;
             """)
 
             # 运行ID索引

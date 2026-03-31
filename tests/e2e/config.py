@@ -60,9 +60,9 @@ def get_session_id(sample_id: str = "sample_001", task_id: str = "task_001") -> 
     """
     生成测试用的 session_id
 
-    格式: {prefix};{sample_id};{task_id}
+    格式: {prefix},{sample_id},{task_id}
     """
-    return f"{SESSION_PREFIX};{sample_id};{task_id}"
+    return f"{SESSION_PREFIX},{sample_id},{task_id}"
 
 
 def get_headers(session_id: str = None) -> dict:

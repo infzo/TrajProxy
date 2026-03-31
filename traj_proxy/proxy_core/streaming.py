@@ -39,7 +39,7 @@ class StreamingResponseGenerator:
 
     def __init__(
         self,
-        processor,
+        streaming_processor,
         messages: list,
         request_id: str,
         session_id: Optional[str] = None,
@@ -48,18 +48,18 @@ class StreamingResponseGenerator:
         """初始化生成器
 
         Args:
-            processor: Processor 实例
+            streaming_processor: StreamingProcessor 实例
             messages: 消息列表
             request_id: 请求 ID
             session_id: 会话 ID
             **request_params: 请求参数
         """
-        self.processor = processor
+        self.streaming_processor = streaming_processor
         self.messages = messages
         self.request_id = request_id
         self.session_id = session_id
         self.request_params = request_params
-        # 请求级别的上下文容器，避免使用 Processor 实例变量导致并发覆盖
+        # 请求级别的上下文容器，避免使用实例变量导致并发覆盖
         self._context_holder: dict = {}
 
     def get_completed_context(self) -> Optional[Any]:
@@ -77,7 +77,7 @@ class StreamingResponseGenerator:
             SSE 格式的字符串
         """
         try:
-            async for chunk in self.processor.process_request_stream(
+            async for chunk in self.streaming_processor.process_stream(
                 messages=self.messages,
                 request_id=self.request_id,
                 session_id=self.session_id,

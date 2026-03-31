@@ -568,6 +568,255 @@ class TestClaudeRequests:
         assert "message_stop" in event_types, "缺少 message_stop 事件"
 
 
+class TestClaudeToolUseValidation:
+    """Claude tool_use 格式详细验证测试类"""
+
+    @pytest.mark.integration
+    def test_claude_tool_use_response_format(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        claude_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试 Claude tool_use 响应格式
+
+        验证点:
+        - tool_use content block 结构正确
+        - 包含 id, type, name, input 字段
+        - input 是有效的 JSON 对象
+        """
+        url = f"{nginx_url}/s/{unique_session_id}/v1/messages"
+
+        response = nginx_client.post(
+            url,
+            headers=claude_headers,
+            json={
+                "model": registered_model_name,
+                "max_tokens": 200,
+                "messages": [
+                    {"role": "user", "content": "北京的天气怎么样？"}
+                ],
+                "tools": SAMPLE_TOOLS
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"请求失败: {response.text}"
+
+        data = response.json()
+
+        # 验证基本响应结构
+        assert data.get("type") == "message"
+        assert data.get("role") == "assistant"
+
+        content = data.get("content", [])
+        assert isinstance(content, list)
+
+        # 查找 tool_use block
+        tool_use_block = None
+        text_blocks = []
+
+        for block in content:
+            block_type = block.get("type")
+            if block_type == "tool_use":
+                tool_use_block = block
+            elif block_type == "text":
+                text_blocks.append(block)
+
+        # 如果有 tool_use，验证格式
+        if tool_use_block:
+            # 必须字段
+            assert "id" in tool_use_block, "tool_use block 缺少 id 字段"
+            assert tool_use_block["type"] == "tool_use"
+            assert "name" in tool_use_block, "tool_use block 缺少 name 字段"
+            assert "input" in tool_use_block, "tool_use block 缺少 input 字段"
+
+            # 验证 ID 格式 (通常以 "toolu_" 开头)
+            tool_id = tool_use_block["id"]
+            assert tool_id, "tool_use id 不能为空"
+
+            # 验证 name
+            tool_name = tool_use_block["name"]
+            assert tool_name, "tool_use name 不能为空"
+
+            # 验证 input 是 dict
+            tool_input = tool_use_block["input"]
+            assert isinstance(tool_input, dict), f"input 应为 dict: {type(tool_input)}"
+
+            # 如果是天气工具，验证参数
+            if tool_name == "get_weather":
+                assert "city" in tool_input, "get_weather 缺少 city 参数"
+
+    @pytest.mark.integration
+    def test_claude_tool_use_id_uniqueness(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        claude_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试多个 tool_use 的 ID 唯一性
+
+        验证点:
+        - 多个 tool_use block 有不同的 id
+        """
+        url = f"{nginx_url}/s/{unique_session_id}/v1/messages"
+
+        response = nginx_client.post(
+            url,
+            headers=claude_headers,
+            json={
+                "model": registered_model_name,
+                "max_tokens": 300,
+                "messages": [
+                    {"role": "user", "content": "请同时查询北京和上海的天气"}
+                ],
+                "tools": SAMPLE_TOOLS
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"请求失败: {response.text}"
+
+        data = response.json()
+        content = data.get("content", [])
+
+        # 收集所有 tool_use IDs
+        tool_use_ids = []
+        for block in content:
+            if block.get("type") == "tool_use":
+                tool_use_ids.append(block["id"])
+
+        # 如果有多个 tool_use，验证唯一性
+        if len(tool_use_ids) > 1:
+            assert len(tool_use_ids) == len(set(tool_use_ids)), \
+                f"tool_use IDs 不唯一: {tool_use_ids}"
+
+    @pytest.mark.integration
+    def test_claude_tool_use_stop_reason(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        claude_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试 tool_use 时的 stop_reason
+
+        验证点:
+        - 当返回 tool_use 时，stop_reason 应为 "tool_use"
+        """
+        url = f"{nginx_url}/s/{unique_session_id}/v1/messages"
+
+        response = nginx_client.post(
+            url,
+            headers=claude_headers,
+            json={
+                "model": registered_model_name,
+                "max_tokens": 200,
+                "messages": [
+                    {"role": "user", "content": "北京的天气怎么样？"}
+                ],
+                "tools": SAMPLE_TOOLS
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200
+
+        data = response.json()
+        content = data.get("content", [])
+
+        has_tool_use = any(b.get("type") == "tool_use" for b in content)
+
+        if has_tool_use and "stop_reason" in data:
+            assert data["stop_reason"] == "tool_use", \
+                f"stop_reason 应为 'tool_use': {data['stop_reason']}"
+
+    @pytest.mark.integration
+    @pytest.mark.slow
+    def test_claude_stream_tool_use_events(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        claude_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试 Claude 流式 tool_use 事件
+
+        验证点:
+        - content_block_start 事件包含 tool_use 类型的 block
+        - content_block_delta 事件包含 input_json_delta
+        - content_block_stop 事件正确结束
+        """
+        url = f"{nginx_url}/s/{unique_session_id}/v1/messages"
+
+        response = nginx_client.post(
+            url,
+            headers=claude_headers,
+            json={
+                "model": registered_model_name,
+                "max_tokens": 200,
+                "messages": [
+                    {"role": "user", "content": "北京的天气怎么样？"}
+                ],
+                "tools": SAMPLE_TOOLS,
+                "stream": True
+            },
+            stream=True,
+            timeout=STREAM_TIMEOUT
+        )
+
+        assert response.status_code == 200
+
+        tool_use_started = False
+        tool_use_deltas = []
+        content_block_starts = []
+
+        for line in response.iter_lines(decode_unicode=True):
+            if not line or not line.startswith("data: "):
+                continue
+
+            data_str = line[6:]
+            try:
+                event = json.loads(data_str)
+                event_type = event.get("type")
+
+                if event_type == "content_block_start":
+                    block = event.get("content_block", {})
+                    content_block_starts.append(block)
+                    if block.get("type") == "tool_use":
+                        tool_use_started = True
+
+                elif event_type == "content_block_delta":
+                    delta = event.get("delta", {})
+                    if delta.get("type") == "input_json_delta":
+                        partial_json = delta.get("partial_json", "")
+                        tool_use_deltas.append(partial_json)
+
+            except json.JSONDecodeError:
+                pass
+
+        # 如果有 tool_use，验证事件序列
+        if tool_use_started:
+            # 验证 content_block_start 中有 tool_use
+            tool_use_blocks = [b for b in content_block_starts if b.get("type") == "tool_use"]
+            assert len(tool_use_blocks) > 0, "未找到 tool_use content block"
+
+            # 验证 tool_use block 结构
+            for block in tool_use_blocks:
+                assert "name" in block or "id" in block, \
+                    f"tool_use block 结构不完整: {block}"
+
+
 class TestTrajectoryVerification:
     """轨迹验证测试类"""
 

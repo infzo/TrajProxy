@@ -37,7 +37,9 @@ class ModelRepository:
         api_key: str,
         tokenizer_path: str,
         token_in_token_out: bool = False,
-        run_id: str = ""
+        run_id: str = "",
+        tool_parser: str = "",
+        reasoning_parser: str = ""
     ) -> ModelConfig:
         """注册新模型到数据库（使用 UPSERT）
 
@@ -48,6 +50,8 @@ class ModelRepository:
             tokenizer_path: Tokenizer 路径
             token_in_token_out: 是否使用 Token-in-Token-out 模式
             run_id: 运行ID，空字符串表示全局模型
+            tool_parser: 工具解析器名称
+            reasoning_parser: 推理解析器名称
 
         Returns:
             ModelConfig 实例
@@ -60,16 +64,20 @@ class ModelRepository:
                 now = datetime.now()
                 await conn.execute("""
                     INSERT INTO model_registry
-                    (run_id, model_name, url, api_key, tokenizer_path, token_in_token_out, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (run_id, model_name, url, api_key, tokenizer_path, token_in_token_out,
+                     tool_parser, reasoning_parser, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (run_id, model_name)
                     DO UPDATE SET
                         url = EXCLUDED.url,
                         api_key = EXCLUDED.api_key,
                         tokenizer_path = EXCLUDED.tokenizer_path,
                         token_in_token_out = EXCLUDED.token_in_token_out,
+                        tool_parser = EXCLUDED.tool_parser,
+                        reasoning_parser = EXCLUDED.reasoning_parser,
                         updated_at = EXCLUDED.updated_at
-                """, (run_id, model_name, url, api_key, tokenizer_path, token_in_token_out, now))
+                """, (run_id, model_name, url, api_key, tokenizer_path, token_in_token_out,
+                      tool_parser, reasoning_parser, now))
 
                 return ModelConfig(
                     run_id=run_id,
@@ -78,6 +86,8 @@ class ModelRepository:
                     api_key=api_key,
                     tokenizer_path=tokenizer_path,
                     token_in_token_out=token_in_token_out,
+                    tool_parser=tool_parser,
+                    reasoning_parser=reasoning_parser,
                     updated_at=now
                 )
         except Exception as e:
@@ -120,7 +130,8 @@ class ModelRepository:
             async with self.pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute("""
-                        SELECT run_id, model_name, url, api_key, tokenizer_path, token_in_token_out, updated_at
+                        SELECT run_id, model_name, url, api_key, tokenizer_path, token_in_token_out,
+                               tool_parser, reasoning_parser, updated_at
                         FROM model_registry
                         ORDER BY run_id, model_name
                     """)
@@ -134,7 +145,9 @@ class ModelRepository:
                             api_key=row[3],
                             tokenizer_path=row[4],
                             token_in_token_out=row[5],
-                            updated_at=row[6]
+                            tool_parser=row[6] if len(row) > 6 else "",
+                            reasoning_parser=row[7] if len(row) > 7 else "",
+                            updated_at=row[8] if len(row) > 8 else row[6]
                         )
                         for row in rows
                     ]

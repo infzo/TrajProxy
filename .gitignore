@@ -148,7 +148,6 @@ venv.bak/
 logs/
 
 # Docker images
-dockers/images/
 *.tar
 
 # Spyder project settings
@@ -215,3 +214,8 @@ __marimo__/
 
 
 postgres_data/
+.VSCodeCounter/
+
+# TrajProxy specific
+dockers/images/
+models/

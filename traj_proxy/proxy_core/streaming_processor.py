@@ -1,0 +1,311 @@
+"""
+StreamingProcessor - 流式请求处理器
+
+专门处理流式 LLM 请求，从 Processor 中分离出来。
+"""
+from typing import AsyncIterator, Dict, Any, Optional
+from datetime import datetime
+import traceback
+
+from traj_proxy.utils.logger import get_logger
+from traj_proxy.proxy_core.context import ProcessContext
+from traj_proxy.proxy_core.infer_response_parser import InferResponseParser
+from traj_proxy.exceptions import DatabaseError
+
+logger = get_logger(__name__)
+
+
+class StreamingProcessor:
+    """流式请求处理器
+
+    专门处理流式 LLM 请求，职责单一，与 Processor（非流式）分离。
+
+    处理流程：
+    1. Message → PromptText 转换
+    2. (可选) Token 编码（Token-in-Token-out 模式）
+    3. 流式发送请求到 Infer
+    4. 流式解析响应
+    5. 构建 OpenAI 格式流式响应
+    6. 完成后存储到数据库
+    """
+
+    def __init__(
+        self,
+        model: str,
+        tokenizer_path: str,
+        prompt_builder,
+        token_builder,
+        infer_client,
+        request_repository=None,
+        tool_parser_name: str = "",
+        reasoning_parser_name: str = ""
+    ):
+        """初始化 StreamingProcessor
+
+        Args:
+            model: 模型名称
+            tokenizer_path: Tokenizer 路径
+            prompt_builder: PromptBuilder 实例
+            token_builder: TokenBuilder 实例（可为 None，表示 Text 模式）
+            infer_client: InferClient 实例
+            request_repository: 请求记录仓库
+            tool_parser_name: Tool parser 名称
+            reasoning_parser_name: Reasoning parser 名称
+        """
+        self.model = model
+        self.tokenizer_path = tokenizer_path
+        self.prompt_builder = prompt_builder
+        self.token_builder = token_builder
+        self.infer_client = infer_client
+        self.request_repository = request_repository
+        self.tool_parser_name = tool_parser_name
+        self.reasoning_parser_name = reasoning_parser_name
+
+        # Token-in-Token-out 模式由 token_builder 是否存在决定
+        self.token_in_token_out = token_builder is not None
+
+    async def process_stream(
+        self,
+        messages: list,
+        request_id: str,
+        session_id: Optional[str] = None,
+        context_holder: Optional[dict] = None,
+        **request_params
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """流式处理 LLM 请求
+
+        Args:
+            messages: OpenAI 格式的消息列表
+            request_id: 请求 ID
+            session_id: 会话 ID（格式: app_id,sample_id,task_id）
+            context_holder: 可选容器，流式完成后存储上下文
+            **request_params: 请求参数（如 max_tokens, temperature 等）
+
+        Yields:
+            OpenAI 格式的流式响应块
+        """
+        # 构建 unique_id
+        unique_id = f"{session_id},{request_id}" if session_id else request_id
+
+        # 初始化上下文
+        context = ProcessContext(
+            request_id=request_id,
+            model=self.model,
+            messages=messages,
+            request_params=request_params,
+            session_id=session_id,
+            unique_id=unique_id,
+            is_stream=True
+        )
+        context.start_time = datetime.now()
+
+        # 流式状态
+        previous_text = ""
+        previous_token_ids = []
+
+        logger.info(f"[{unique_id}] 开始流式处理请求: model={self.model}, messages_count={len(messages)}")
+
+        try:
+            # 1. Message → PromptText 转换
+            context.prompt_text = await self.prompt_builder.build_prompt_text(
+                messages, context
+            )
+            logger.info(f"[{unique_id}] PromptText 转换完成: prompt_length={len(context.prompt_text)}")
+
+            # 2. 准备 Infer 请求
+            if self.token_in_token_out:
+                # Token-in-Token-out 模式：先完成前缀匹配
+                context.token_ids = await self.token_builder.encode_text(
+                    context.prompt_text, context
+                )
+                context.prompt_tokens = len(context.token_ids)
+                prompt_input = context.token_ids
+                logger.info(f"[{unique_id}] TokenIds 转换完成: prompt_tokens={context.prompt_tokens}, cache_hit_tokens={context.cache_hit_tokens}")
+            else:
+                # Text 模式
+                prompt_input = context.prompt_text
+
+            # 3. 流式请求并处理响应
+            # 使用上下文管理器自动管理流式状态
+            with self.prompt_builder:
+                async for infer_chunk in self.infer_client.send_completion_stream(
+                    prompt=prompt_input,
+                    model=self.model,
+                    **request_params
+                ):
+                    # 处理单个响应块
+                    chunk = await self._process_stream_chunk(
+                        infer_chunk, context,
+                        previous_text, previous_token_ids
+                    )
+
+                    if chunk:
+                        # 更新状态
+                        previous_text = context.stream_buffer_text
+                        previous_token_ids = context.stream_buffer_ids.copy()
+
+                        context.stream_chunk_count += 1
+                        yield chunk
+
+                        # 如果是最后一个 chunk，结束流
+                        if context.stream_finished:
+                            break
+
+            # 4. 流式结束后更新上下文
+            await self._finalize_stream(context, context_holder)
+
+        except Exception as e:
+            await self._handle_stream_error(context, e, context_holder)
+            raise
+
+    async def _process_stream_chunk(
+        self,
+        infer_chunk: Dict[str, Any],
+        context: ProcessContext,
+        previous_text: str,
+        previous_token_ids: list
+    ) -> Optional[Dict[str, Any]]:
+        """处理单个流式响应块
+
+        Args:
+            infer_chunk: Infer 响应块
+            context: 处理上下文
+            previous_text: 之前的累积文本
+            previous_token_ids: 之前的 token IDs
+
+        Returns:
+            OpenAI 格式的 chunk 字典，或 None
+        """
+        # 解析 Infer 响应块
+        chunk_content, chunk_token_ids, tool_calls_delta = \
+            InferResponseParser.parse_stream_chunk(
+                infer_chunk, self.token_in_token_out
+            )
+
+        # Token-in-Token-out 模式：增量解码 token IDs
+        if self.token_in_token_out and chunk_token_ids:
+            chunk_content = self.token_builder.decode_tokens_streaming(
+                chunk_token_ids, context
+            )
+
+        # 累积响应
+        current_text = context.stream_buffer_text
+        if chunk_content:
+            context.stream_buffer_text += chunk_content
+            current_text = context.stream_buffer_text
+
+        current_token_ids = context.stream_buffer_ids.copy()
+        if chunk_token_ids:
+            context.stream_buffer_ids.extend(chunk_token_ids)
+            current_token_ids = context.stream_buffer_ids
+
+        delta_token_ids = chunk_token_ids or []
+
+        # 使用 Parser 进行流式解析
+        parsed_content, parsed_tool_calls, reasoning_delta = \
+            self.prompt_builder.process_streaming_parse(
+                delta_text=chunk_content or "",
+                context=context,
+                previous_text=previous_text,
+                current_text=current_text,
+                previous_token_ids=previous_token_ids,
+                current_token_ids=current_token_ids,
+                delta_token_ids=delta_token_ids
+            )
+
+        # 使用解析结果覆盖原始内容
+        effective_content = parsed_content
+        effective_tool_calls = parsed_tool_calls or tool_calls_delta
+
+        # 检查是否结束
+        finish_reason = None
+        if InferResponseParser.is_stream_finished(infer_chunk):
+            # 尝试从 Parser 获取结束原因
+            parser_finish = self.prompt_builder.get_finish_reason_from_parser(context)
+            finish_reason = parser_finish or InferResponseParser.get_finish_reason(infer_chunk)
+            context.stream_finished = True
+            # 保存 usage 信息（如果有）
+            if "usage" in infer_chunk:
+                context.infer_response = {"usage": infer_chunk["usage"]}
+
+        # 构建并发送 OpenAI 流式响应块
+        openai_chunk = self.prompt_builder.build_stream_chunk(
+            content=effective_content,
+            context=context,
+            finish_reason=finish_reason,
+            tool_calls_delta=effective_tool_calls,
+            reasoning_delta=reasoning_delta
+        )
+
+        return openai_chunk
+
+    async def _finalize_stream(
+        self,
+        context: ProcessContext,
+        context_holder: Optional[dict]
+    ):
+        """完成流式处理
+
+        Args:
+            context: 处理上下文
+            context_holder: 上下文存储容器
+        """
+        # 更新上下文
+        context.response_text = context.stream_buffer_text
+        context.response_ids = context.stream_buffer_ids if self.token_in_token_out else None
+        context.full_conversation_text = context.prompt_text + context.response_text
+
+        if self.token_in_token_out and context.token_ids and context.response_ids:
+            context.full_conversation_token_ids = context.token_ids + context.response_ids
+
+        # 统计信息
+        if self.token_in_token_out:
+            context.completion_tokens = len(context.stream_buffer_ids)
+        else:
+            # Text 模式：尝试从 infer 响应获取，或使用字符估算
+            if context.infer_response and "usage" in context.infer_response:
+                usage = context.infer_response["usage"]
+                context.completion_tokens = usage.get("completion_tokens", 0)
+            else:
+                # 使用字符数估算（粗略估计：4 字符约等于 1 token）
+                context.completion_tokens = len(context.response_text) // 4 if context.response_text else 0
+        context.total_tokens = (context.prompt_tokens or 0) + context.completion_tokens
+
+        context.end_time = datetime.now()
+        context.processing_duration_ms = (
+            context.end_time - context.start_time
+        ).total_seconds() * 1000
+
+        # 构建完整响应（用于存储）
+        context.response = self.prompt_builder.build_openai_response(
+            context.response_text, context
+        )
+
+        logger.info(f"[{context.unique_id}] 流式处理完成: chunks={context.stream_chunk_count}, duration_ms={context.processing_duration_ms:.2f}")
+
+        # 将上下文写入调用方提供的容器
+        if context_holder is not None:
+            context_holder['context'] = context
+
+    async def _handle_stream_error(
+        self,
+        context: ProcessContext,
+        error: Exception,
+        context_holder: Optional[dict]
+    ):
+        """处理流式错误
+
+        Args:
+            context: 处理上下文
+            error: 异常
+            context_holder: 上下文存储容器
+        """
+        context.error = str(error)
+        context.error_traceback = traceback.format_exc()
+        context.end_time = datetime.now()
+
+        logger.error(f"[{context.unique_id}] 流式处理异常: {str(error)}\n{traceback.format_exc()}")
+
+        # 异常时也写入上下文，以便后台存储
+        if context_holder is not None:
+            context_holder['context'] = context

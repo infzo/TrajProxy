@@ -17,6 +17,7 @@ class DeepSeekR1ReasoningParser(BaseThinkingReasoningParser):
     DeepSeek R1 推理内容解析器
 
     DeepSeek R1 使用 <thinky></thinke> 标记包围推理内容。
+    与 vLLM DeepSeekR1ReasoningParser 保持一致。
     """
 
     @property
@@ -43,6 +44,8 @@ class DeepSeekR1ReasoningParser(BaseThinkingReasoningParser):
 
         重写以处理 DeepSeek R1 的特殊情况：
         当 start_token 不在 previous 或 delta 时，根据 end_token 位置判断
+
+        与 vLLM DeepSeekR1ReasoningParser 保持一致。
         """
         # 先调用基类实现
         ret = super().extract_reasoning_streaming(
@@ -54,14 +57,15 @@ class DeepSeekR1ReasoningParser(BaseThinkingReasoningParser):
             delta_token_ids,
         )
 
-        if ret is not None:
-            return ret
-
-        # 处理特殊情况：没有 start_token 但有 end_token
-        if self._start_token_id not in previous_token_ids and \
-           self._start_token_id not in delta_token_ids:
+        # 关键：只有当没有 start_token 时才重写基类结果
+        # 这是与 vLLM 一致的逻辑
+        if (
+            ret is not None
+            and self._start_token_id not in previous_token_ids
+            and self._start_token_id not in delta_token_ids
+        ):
             if self._end_token_id in delta_token_ids:
-                # end 在本次增量中
+                # end 在本次增量中，提取推理内容和剩余内容
                 end_index = delta_text.find(self.end_token)
                 reasoning = delta_text[:end_index]
                 content = delta_text[end_index + len(self.end_token):]
@@ -70,10 +74,10 @@ class DeepSeekR1ReasoningParser(BaseThinkingReasoningParser):
                     content=content if content else None
                 )
             elif self._end_token_id in previous_token_ids:
-                # end 在之前，普通内容
+                # end 在之前，推理内容已结束
                 return DeltaMessage(content=delta_text)
             else:
-                # 还在推理内容中
+                # 没有 end token，推理内容继续
                 return DeltaMessage(reasoning=delta_text)
 
-        return None
+        return ret
