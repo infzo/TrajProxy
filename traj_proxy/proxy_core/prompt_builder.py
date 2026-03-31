@@ -118,6 +118,8 @@ class PromptBuilder:
         使用 tokenizer.apply_chat_template() 方法，
         将 OpenAI 格式的 messages 转换为模型特定的 prompt 格式。
 
+        支持 tools、documents、tool_choice 等参数传递给 chat template。
+
         Args:
             messages: OpenAI Message 格式的消息列表
             context: 处理上下文
@@ -128,10 +130,31 @@ class PromptBuilder:
         # 预处理消息，解决格式兼容性问题
         processed_messages = self._preprocess_messages(messages)
 
+        # 构建 apply_chat_template 参数
+        template_kwargs = {
+            "tokenize": False,
+            "add_generation_prompt": True
+        }
+
+        # 从 request_params 提取 tools 相关参数
+        tools = context.request_params.get("tools")
+        if tools:
+            template_kwargs["tools"] = tools
+
+        # 从 request_params 提取 documents 参数（RAG 场景）
+        documents = context.request_params.get("documents")
+        if documents:
+            template_kwargs["documents"] = documents
+
+        # 从 request_params 提取 tool_choice 参数
+        # 简单传递策略：依赖模型的 chat template 处理
+        tool_choice = context.request_params.get("tool_choice")
+        if tool_choice:
+            template_kwargs["tool_choice"] = tool_choice
+
         return self.tokenizer.apply_chat_template(
             processed_messages,
-            tokenize=False,
-            add_generation_prompt=True
+            **template_kwargs
         )
 
     # ==================== 非流式响应构建 ====================

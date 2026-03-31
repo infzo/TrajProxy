@@ -254,8 +254,8 @@ class Qwen3CoderToolParser(BaseToolParser):
             self.prev_tool_call_arr.clear()
             for tool_call in tool_calls:
                 self.prev_tool_call_arr.append({
-                    "name": tool_call.name,
-                    "arguments": tool_call.arguments,
+                    "name": tool_call.function.name,
+                    "arguments": tool_call.function.arguments,
                 })
 
             # 提取内容

@@ -470,6 +470,10 @@ class ProcessorManager:
     def get_processor(self, run_id: str, model_name: str) -> Optional[Processor]:
         """根据 run_id 和 model_name 获取 Processor（优先返回动态模型）
 
+        查找顺序：
+        1. 精确匹配 (run_id, model_name)
+        2. 如果精确匹配失败，回退到全局预置模型 ("", model_name)
+
         Args:
             run_id: 运行ID
             model_name: 模型名称
@@ -478,7 +482,19 @@ class ProcessorManager:
             Processor 实例，如果不存在则返回 None
         """
         key = (run_id, model_name)
-        return self.dynamic_processors.get(key) or self.config_processors.get(key)
+        # 优先查找动态模型
+        processor = self.dynamic_processors.get(key)
+        if processor:
+            return processor
+        # 查找预置模型
+        processor = self.config_processors.get(key)
+        if processor:
+            return processor
+        # 回退到全局预置模型（run_id 为空）
+        if run_id:  # 只有当 run_id 非空时才回退
+            fallback_key = ("", model_name)
+            return self.config_processors.get(fallback_key)
+        return None
 
     def get_processor_by_session(self, model_name: str, session_id: str) -> Optional[Processor]:
         """根据 session_id 和 model_name 获取 Processor
@@ -589,7 +605,7 @@ class ProcessorManager:
         """解析 tokenizer 路径
 
         Args:
-            tokenizer: Tokenizer（路径或 HF 模型名称）
+            tokenizer: Tokenizer（本地路径或 HuggingFace 模型名称）
 
         Returns:
             实际的 tokenizer 路径
@@ -610,7 +626,13 @@ class ProcessorManager:
         if os.path.exists(local_path):
             return local_path
 
+        # 检查是否是 HuggingFace 模型名称（包含 /）
+        if "/" in tokenizer and not tokenizer.startswith("/"):
+            # HuggingFace 模型名称，直接返回，让 AutoTokenizer.from_pretrained 处理
+            return tokenizer
+
         raise ValueError(
             f"Tokenizer '{tokenizer}' 不存在。请使用 download_tokenizer.py 脚本下载，"
-            f"或使用绝对路径。已检查目录: {models_dir}"
+            f"或使用绝对路径，或使用 HuggingFace 模型名称（如 'Qwen/Qwen3.5-2B'）。"
+            f"已检查目录: {models_dir}"
         )

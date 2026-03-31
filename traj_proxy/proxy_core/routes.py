@@ -83,13 +83,14 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
         # 校验 session_id
         valid, msg = validate_session_id(session_id)
         if not valid:
-            raise HTTPException(status_code=422, detail=msg)
+            raise HTTPException(status_code=400, detail=msg)
 
         # session_id 可以为空，为空时 run_id 将等于 model_name
 
         # 其他请求参数
         request_params = {}
-        for key in ["max_tokens", "temperature", "top_p", "presence_penalty", "frequency_penalty"]:
+        for key in ["max_tokens", "temperature", "top_p", "presence_penalty", "frequency_penalty",
+                    "tools", "tool_choice", "parallel_tool_calls", "documents"]:
             if key in body:
                 request_params[key] = body[key]
 
