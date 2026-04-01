@@ -221,3 +221,19 @@ postgres_data/
 # TrajProxy specific
 dockers/images/
 models/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+
+# Node.js
+node_modules/
+package.json
+package-lock.json
+
+# Dev tools
+.claude/
+.husky/
+commitlint.config.js
