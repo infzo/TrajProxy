@@ -4,7 +4,7 @@ TranscriptProvider - 转录提供者
 负责处理轨迹记录查询的业务逻辑
 """
 
-from typing import List, Dict, Any
+from typing import Dict, Any
 from traj_proxy.store.request_repository import RequestRepository
 
 

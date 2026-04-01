@@ -247,56 +247,37 @@ class TestModelDeletion:
 class TestModelListing:
     """模型列表测试类"""
 
-    def test_list_models_openai_format(self, proxy_client: requests.Session):
+    def test_list_models(self, proxy_client: requests.Session):
         """
-        测试列出模型接口（OpenAI 格式）
+        测试列出模型接口
 
-        验证点:
-        - 返回状态码 200
-        - 响应格式符合 OpenAI /v1/models 规范
-        - 至少包含一个模型
+        验证 OpenAI 格式和管理格式的模型列表接口：
+        - OpenAI 格式: /v1/models
+        - 管理格式: /models/
         """
-        response = proxy_client.get(f"{PROXY_URL}/v1/models")
+        # 测试 OpenAI 格式
+        openai_response = proxy_client.get(f"{PROXY_URL}/v1/models")
+        assert openai_response.status_code == 200, f"OpenAI 格式列出模型失败: {openai_response.text}"
 
-        assert response.status_code == 200, f"列出模型失败: {response.text}"
+        openai_data = openai_response.json()
+        assert openai_data.get("object") == "list", f"object 字段错误: {openai_data.get('object')}"
+        assert "data" in openai_data, "响应缺少 data 字段"
+        assert isinstance(openai_data["data"], list), "data 不是列表类型"
 
-        data = response.json()
-
-        # 验证响应结构
-        assert data.get("object") == "list", f"object 字段错误: {data.get('object')}"
-        assert "data" in data, "响应缺少 data 字段"
-        assert isinstance(data["data"], list), "data 不是列表类型"
-
-        # 验证模型条目结构
-        if len(data["data"]) > 0:
-            model = data["data"][0]
+        if len(openai_data["data"]) > 0:
+            model = openai_data["data"][0]
             assert "id" in model, "模型条目缺少 id 字段"
             assert model.get("object") == "model", f"模型 object 字段错误: {model.get('object')}"
 
-    def test_list_models_detail(self, proxy_client: requests.Session):
-        """
-        测试列出模型详情接口（管理格式）
+        # 测试管理格式
+        admin_response = proxy_client.get(f"{PROXY_URL}/models/")
+        assert admin_response.status_code == 200, f"管理格式列出模型失败: {admin_response.text}"
 
-        验证点:
-        - 返回状态码 200
-        - 响应包含模型详细信息
+        admin_data = admin_response.json()
+        assert admin_data.get("status") == "success", f"状态错误: {admin_data.get('status')}"
+        assert "count" in admin_data, "响应缺少 count 字段"
+        assert "models" in admin_data, "响应缺少 models 字段"
 
-        注意: 管理格式路由需要尾部斜杠 /models/
-        """
-        # 访问管理格式的模型列表（需要尾部斜杠）
-        response = proxy_client.get(f"{PROXY_URL}/models/")
-
-        assert response.status_code == 200, f"列出模型详情失败: {response.text}"
-
-        data = response.json()
-
-        # 验证响应结构
-        assert data.get("status") == "success", f"状态错误: {data.get('status')}"
-        assert "count" in data, "响应缺少 count 字段"
-        assert "models" in data, "响应缺少 models 字段"
-        assert isinstance(data["models"], list), "models 不是列表类型"
-
-        # 验证模型详情结构
-        if len(data["models"]) > 0:
-            model = data["models"][0]
+        if len(admin_data["models"]) > 0:
+            model = admin_data["models"][0]
             assert "model_name" in model, "模型缺少 model_name 字段"

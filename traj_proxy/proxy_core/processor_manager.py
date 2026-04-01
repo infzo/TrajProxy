@@ -20,7 +20,7 @@ from traj_proxy.store.request_repository import RequestRepository
 from traj_proxy.store.models import ModelConfig
 from traj_proxy.exceptions import DatabaseError
 from traj_proxy.utils.logger import get_logger
-from traj_proxy.utils.config import get_sync_interval, get_sync_max_retries, get_sync_retry_delay
+from traj_proxy.utils.config import get_sync_max_retries, get_sync_retry_delay, get_sync_fallback_interval
 
 logger = get_logger(__name__)
 
@@ -33,7 +33,7 @@ class RegisterModelRequest(BaseModel):
     model_name: str = Field(..., description="模型名称")
     url: str = Field(..., description="Infer 服务 URL")
     api_key: str = Field(..., description="API 密钥")
-    tokenizer_path: str = Field(..., description="Tokenizer 路径（本地路径或 HuggingFace 模型名称）")
+    tokenizer_path: Optional[str] = Field(default=None, description="Tokenizer 路径（token_in_token_out=True 时必需）")
     token_in_token_out: bool = Field(default=False, description="是否使用 Token-in-Token-out 模式")
     tool_parser: str = Field(default="", description="Tool parser 名称")
     reasoning_parser: str = Field(default="", description="Reasoning parser 名称")
@@ -56,6 +56,14 @@ class RegisterModelRequest(BaseModel):
             raise ValueError(msg)
         return v
 
+    @field_validator('tokenizer_path')
+    @classmethod
+    def validate_tokenizer_path(cls, v, info):
+        """校验 tokenizer_path 在 token_in_token_out=True 时必须提供"""
+        if info.data.get('token_in_token_out') and not v:
+            raise ValueError("token_in_token_out=True 时，tokenizer_path 必须提供")
+        return v
+
 
 class RegisterModelResponse(BaseModel):
     """注册模型响应"""
@@ -73,20 +81,6 @@ class DeleteModelResponse(BaseModel):
     deleted: bool
 
 
-class ModelInfo(BaseModel):
-    """单个模型信息"""
-    id: str = Field(..., description="模型 ID")
-    object: str = Field(default="model", description="对象类型")
-    created: int = Field(default=1677610602, description="创建时间戳")
-    owned_by: str = Field(default="organization-owner", description="所有者")
-
-
-class ListModelsResponse(BaseModel):
-    """列出模型响应"""
-    object: str = "list"
-    data: List[ModelInfo]
-
-
 # ========== ProcessorManager 类 ==========
 
 class ProcessorManager:
@@ -100,13 +94,15 @@ class ProcessorManager:
     - 列出所有已注册模型
     """
 
-    def __init__(self, db_manager: DatabaseManager):
+    def __init__(self, db_manager: DatabaseManager, db_url: str = ""):
         """初始化 ProcessorManager
 
         Args:
             db_manager: 数据库管理器（所有 Processor 共享）
+            db_url: 数据库连接 URL（用于 LISTEN/NOTIFY 专用连接）
         """
         self.db_manager = db_manager
+        self._db_url = db_url
         # 分离存储：预置模型和动态模型，键为 (run_id, model_name) 元组
         self.config_processors: Dict[Tuple[str, str], Processor] = {}  # 预置模型（不存数据库）
         self.dynamic_processors: Dict[Tuple[str, str], Processor] = {}  # 动态模型（从数据库同步）
@@ -115,19 +111,21 @@ class ProcessorManager:
         self.model_registry = ModelRepository(db_manager.pool)
         self.request_repository = RequestRepository(db_manager.pool)
         self._sync_task: Optional[asyncio.Task] = None
+        self._fallback_sync_task: Optional[asyncio.Task] = None
+        self._notification_listener = None
         # 从配置读取同步参数
-        self._sync_interval = get_sync_interval()
         self._sync_max_retries = get_sync_max_retries()
         self._sync_retry_delay = get_sync_retry_delay()
+        self._fallback_interval = get_sync_fallback_interval()
 
-        logger.info(f"ProcessorManager 初始化完成，同步间隔: {self._sync_interval}秒")
+        logger.info(f"ProcessorManager 初始化完成，LISTEN/NOTIFY + 兜底同步间隔: {self._fallback_interval}秒")
 
     def _create_processor(
         self,
         model_name: str,
         url: str,
         api_key: str,
-        tokenizer_path: str,
+        tokenizer_path: Optional[str] = None,
         token_in_token_out: bool = False,
         run_id: str = "",
         tool_parser: str = "",
@@ -141,7 +139,7 @@ class ProcessorManager:
             model_name: 模型名称
             url: Infer 服务 URL
             api_key: API 密钥
-            tokenizer_path: Tokenizer 路径
+            tokenizer_path: Tokenizer 路径（token_in_token_out=True 时必需）
             token_in_token_out: 是否使用 Token-in-Token-out 模式
             run_id: 运行ID，空字符串表示全局模型
             tool_parser: Tool parser 名称
@@ -149,7 +147,14 @@ class ProcessorManager:
 
         Returns:
             新创建的 Processor 实例（包含 streaming_processor 属性）
+
+        Raises:
+            ValueError: 当 token_in_token_out=True 但 tokenizer_path 未提供时
         """
+        # 验证参数
+        if token_in_token_out and not tokenizer_path:
+            raise ValueError("token_in_token_out=True 时，tokenizer_path 必须提供")
+
         infer_client = InferClient(
             base_url=url,
             api_key=api_key
@@ -186,48 +191,122 @@ class ProcessorManager:
         return processor
 
     async def start_sync(self):
-        """启动模型同步（定时轮询）"""
-        self._sync_task = asyncio.create_task(self._periodic_sync())
-        logger.info(f"模型同步已启动，轮询间隔: {self._sync_interval}秒")
+        """启动模型同步：LISTEN/NOTIFY（主）+ 定期兜底"""
+        # 1. 首先执行一次全量同步（初始加载）
+        try:
+            await self._sync_from_db()
+            logger.info("初始全量模型同步完成")
+        except Exception as e:
+            logger.error(f"初始全量同步失败: {e}")
+
+        # 2. 启动 LISTEN/NOTIFY 监听器（如果配置了 db_url）
+        if self._db_url:
+            from traj_proxy.store.notification_listener import NotificationListener
+            self._notification_listener = NotificationListener(
+                db_url=self._db_url,
+                on_notification=self._handle_notification,
+                reconnect_delay=self._sync_retry_delay,
+            )
+            await self._notification_listener.start()
+            logger.info("LISTEN/NOTIFY 实时同步已激活")
+        else:
+            logger.warning("未配置 db_url，LISTEN/NOTIFY 已禁用，仅依赖轮询同步")
+
+        # 3. 启动兜底定期全量同步（间隔较长）
+        self._fallback_sync_task = asyncio.create_task(
+            self._periodic_sync(interval=self._fallback_interval)
+        )
+        logger.info(f"兜底定期同步已启动，间隔: {self._fallback_interval}秒")
 
     async def stop_sync(self):
-        """停止模型同步"""
-        if self._sync_task:
-            self._sync_task.cancel()
+        """停止所有同步任务"""
+        if self._notification_listener:
+            await self._notification_listener.stop()
+            self._notification_listener = None
+        if self._fallback_sync_task:
+            self._fallback_sync_task.cancel()
             try:
-                await self._sync_task
+                await self._fallback_sync_task
             except asyncio.CancelledError:
                 pass
+            self._fallback_sync_task = None
         logger.info("模型同步已停止")
 
-    async def _periodic_sync(self):
-        """定期从数据库同步模型配置（带重试机制）"""
+    async def _periodic_sync(self, interval: int = None):
+        """定期全量同步（兜底机制，带重试）"""
+        interval = interval or self._fallback_interval
         retry_count = 0
         current_retry_delay = self._sync_retry_delay
 
         while True:
             try:
-                await asyncio.sleep(self._sync_interval)
+                await asyncio.sleep(interval)
                 await self._sync_from_db()
-                logger.debug("模型同步完成")
-                # 成功后重置重试计数
+                logger.debug("兜底同步完成")
                 retry_count = 0
                 current_retry_delay = self._sync_retry_delay
             except DatabaseError as e:
                 retry_count += 1
                 if retry_count >= self._sync_max_retries:
-                    logger.error(f"模型同步失败（达到最大重试次数 {self._sync_max_retries}）: {e}")
-                    # 重置重试计数，等待下一轮
+                    logger.error(f"兜底同步失败（达到最大重试次数 {self._sync_max_retries}）: {e}")
                     retry_count = 0
                     current_retry_delay = self._sync_retry_delay
                 else:
-                    # 指数退避
                     delay = current_retry_delay * (2 ** (retry_count - 1))
-                    logger.warning(f"模型同步失败（第 {retry_count}/{self._sync_max_retries} 次），{delay}秒后重试: {e}")
+                    logger.warning(f"兜底同步失败（第 {retry_count}/{self._sync_max_retries} 次），{delay}秒后重试: {e}")
                     await asyncio.sleep(delay)
             except Exception as e:
-                logger.error(f"模型同步出现非数据库错误: {e}", exc_info=True)
-                await asyncio.sleep(self._sync_interval)
+                logger.error(f"兜底同步出现非数据库错误: {e}", exc_info=True)
+                await asyncio.sleep(interval)
+
+    async def _handle_notification(self, payload: dict):
+        """处理 LISTEN/NOTIFY 通知，执行增量同步
+
+        对于 register：从数据库获取单个模型并更新内存
+        对于 unregister：直接从内存移除
+
+        Args:
+            payload: 通知内容，包含 action, run_id, model_name, timestamp
+        """
+        action = payload.get("action")
+        run_id = payload.get("run_id", "")
+        model_name = payload.get("model_name", "")
+        key = (run_id, model_name)
+
+        try:
+            if action == "register":
+                # 增量查询：仅获取变更的单个模型
+                config = await self.model_registry.get_by_key(run_id, model_name)
+                if config:
+                    self._create_processor_from_model_config(config, target='dynamic')
+                    logger.info(f"通知同步: 注册模型 {model_name} (run_id={run_id})")
+                else:
+                    # 模型未找到，降级到全量同步
+                    logger.warning(
+                        f"通知同步: register 事件但模型未在 DB 中找到: "
+                        f"{model_name} (run_id={run_id})，降级到全量同步"
+                    )
+                    await self._sync_from_db()
+
+            elif action == "unregister":
+                if key in self.dynamic_processors:
+                    del self.dynamic_processors[key]
+                    logger.info(f"通知同步: 删除模型 {model_name} (run_id={run_id})")
+                else:
+                    logger.debug(
+                        f"通知同步: unregister 事件但模型不在内存中: "
+                        f"{model_name} (run_id={run_id})"
+                    )
+            else:
+                logger.warning(f"通知同步: 未知 action '{action}'，忽略")
+
+        except Exception as e:
+            logger.error(
+                f"通知同步处理失败 (action={action}, model={model_name}, "
+                f"run_id={run_id})，降级到全量同步: {e}",
+                exc_info=True
+            )
+            await self._sync_from_db()
 
     async def _sync_from_db(self):
         """从数据库同步动态模型到内存（预置模型不受影响）"""
@@ -245,10 +324,14 @@ class ProcessorManager:
                     # 新增动态模型
                     self._create_processor_from_model_config(config, target='dynamic')
                 else:
-                    # 检查是否需要更新
+                    # 检查是否需要更新（比较所有影响 Processor 的字段）
                     existing = self.dynamic_processors[key]
                     if (existing.tokenizer_path != config.tokenizer_path or
-                        existing.token_in_token_out != config.token_in_token_out):
+                        existing.token_in_token_out != config.token_in_token_out or
+                        existing.infer_client.base_url != config.url or
+                        existing.infer_client.api_key != config.api_key or
+                        existing.tool_parser_name != config.tool_parser or
+                        existing.reasoning_parser_name != config.reasoning_parser):
                         # 配置变化，重新注册
                         self._create_processor_from_model_config(config, target='dynamic')
 
@@ -295,7 +378,7 @@ class ProcessorManager:
         model_name: str,
         url: str,
         api_key: str,
-        tokenizer_path: str,
+        tokenizer_path: Optional[str] = None,
         token_in_token_out: bool = False,
         persist_to_db: bool = True,
         run_id: str = "",
@@ -308,7 +391,7 @@ class ProcessorManager:
             model_name: 模型名称
             url: Infer 服务 URL
             api_key: API 密钥
-            tokenizer_path: Tokenizer 路径（本地路径或 HuggingFace 模型名称）
+            tokenizer_path: Tokenizer 路径（token_in_token_out=True 时必需）
             token_in_token_out: 是否使用 Token-in-Token-out 模式
             persist_to_db: 是否持久化到数据库（默认 True）
             run_id: 运行ID，空字符串表示全局模型
@@ -319,7 +402,7 @@ class ProcessorManager:
             新创建的 Processor 实例
 
         Raises:
-            ValueError: 如果 (run_id, model_name) 已存在（包括预置模型）或 tokenizer 不存在
+            ValueError: 如果 (run_id, model_name) 已存在（包括预置模型）或参数无效
             DatabaseError: 数据库操作失败
         """
         key = (run_id, model_name)
@@ -328,8 +411,14 @@ class ProcessorManager:
         if key in self.config_processors or key in self.dynamic_processors:
             raise ValueError(f"模型 '{model_name}' 已存在 (run_id={run_id})")
 
-        # 解析 tokenizer 路径
-        resolved_tokenizer_path = self._resolve_tokenizer_path(tokenizer_path)
+        # 验证参数
+        if token_in_token_out and not tokenizer_path:
+            raise ValueError("token_in_token_out=True 时，tokenizer_path 必须提供")
+
+        # 解析 tokenizer 路径（仅在 token_in_token_out=True 时需要）
+        resolved_tokenizer_path = None
+        if token_in_token_out and tokenizer_path:
+            resolved_tokenizer_path = self._resolve_tokenizer_path(tokenizer_path)
 
         # 创建 Processor
         processor = self._create_processor(
@@ -374,7 +463,7 @@ class ProcessorManager:
         model_name: str,
         url: str,
         api_key: str,
-        tokenizer_path: str,
+        tokenizer_path: Optional[str] = None,
         token_in_token_out: bool = False,
         run_id: str = "",
         tool_parser: str = "",
@@ -386,7 +475,7 @@ class ProcessorManager:
             model_name: 模型名称
             url: Infer 服务 URL
             api_key: API 密钥
-            tokenizer_path: Tokenizer 路径（本地路径或 HuggingFace 模型名称）
+            tokenizer_path: Tokenizer 路径（token_in_token_out=True 时必需）
             token_in_token_out: 是否使用 Token-in-Token-out 模式
             run_id: 运行ID，空字符串表示全局模型
             tool_parser: Tool parser 名称
@@ -396,7 +485,7 @@ class ProcessorManager:
             新创建的 Processor 实例
 
         Raises:
-            ValueError: 如果 (run_id, model_name) 已存在（包括动态模型）或 tokenizer 不存在
+            ValueError: 如果 (run_id, model_name) 已存在（包括动态模型）或参数无效
         """
         key = (run_id, model_name)
 
@@ -404,8 +493,14 @@ class ProcessorManager:
         if key in self.config_processors or key in self.dynamic_processors:
             raise ValueError(f"模型 '{model_name}' 已存在 (run_id={run_id})")
 
-        # 解析 tokenizer 路径
-        resolved_tokenizer_path = self._resolve_tokenizer_path(tokenizer_path)
+        # 验证参数
+        if token_in_token_out and not tokenizer_path:
+            raise ValueError("token_in_token_out=True 时，tokenizer_path 必须提供")
+
+        # 解析 tokenizer 路径（仅在 token_in_token_out=True 时需要）
+        resolved_tokenizer_path = None
+        if token_in_token_out and tokenizer_path:
+            resolved_tokenizer_path = self._resolve_tokenizer_path(tokenizer_path)
 
         # 创建 Processor
         processor = self._create_processor(

@@ -230,5 +230,120 @@ class InferClient:
         except Exception as e:
             raise InferServiceError(f"Infer 服务流式请求异常: {str(e)}\n{traceback.format_exc()}")
 
+    async def send_chat_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        model: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """发送 Chat Completions 请求（非流式）
+
+        直接转发 OpenAI 格式的 chat completions 请求到推理服务。
+
+        Args:
+            messages: OpenAI 格式的消息列表
+            model: 模型名称
+            **kwargs: 其他请求参数（如 max_tokens, temperature, tools 等）
+
+        Returns:
+            推理服务返回的原始 JSON 响应
+
+        Raises:
+            InferServiceError: 当请求失败时抛出
+        """
+        url = f"{self.base_url}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # 构建请求体
+        request_body = {
+            "model": model,
+            "messages": messages,
+        }
+
+        # 添加可选参数
+        optional_params = [
+            "max_tokens", "max_completion_tokens", "temperature", "top_p", "presence_penalty", "frequency_penalty",
+            "tools", "tool_choice", "parallel_tool_calls", "stream", "stop", "n", "seed"
+        ]
+        for param in optional_params:
+            if param in kwargs and kwargs[param] is not None:
+                request_body[param] = kwargs[param]
+
+        logger.debug(f"[{model}] 发送 Chat Completions 请求: url={url}")
+        try:
+            client = await self._get_client()
+            response = await client.post(url, json=request_body, headers=headers)
+            response.raise_for_status()
+            logger.debug(f"[{model}] Chat Completions 响应: status={response.status_code}")
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise InferServiceError(f"Infer 服务请求失败: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            raise InferServiceError(f"Infer 服务请求异常: {str(e)}\n{traceback.format_exc()}")
+
+    async def send_chat_completion_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        model: str,
+        **kwargs
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """发送 Chat Completions 请求（流式）
+
+        直接转发 OpenAI 格式的 chat completions 流式请求到推理服务。
+
+        Args:
+            messages: OpenAI 格式的消息列表
+            model: 模型名称
+            **kwargs: 其他请求参数
+
+        Yields:
+            每个流式响应的 JSON 数据
+
+        Raises:
+            InferServiceError: 当请求失败时抛出
+        """
+        url = f"{self.base_url}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # 构建请求体
+        request_body = {
+            "model": model,
+            "messages": messages,
+            "stream": True
+        }
+
+        # 添加可选参数
+        optional_params = [
+            "max_tokens", "max_completion_tokens", "temperature", "top_p", "presence_penalty", "frequency_penalty",
+            "tools", "tool_choice", "parallel_tool_calls", "stop", "n", "seed"
+        ]
+        for param in optional_params:
+            if param in kwargs and kwargs[param] is not None:
+                request_body[param] = kwargs[param]
+
+        try:
+            client = await self._get_client()
+            async with client.stream("POST", url, json=request_body, headers=headers) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            yield json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+        except httpx.HTTPStatusError as e:
+            raise InferServiceError(f"Infer 服务流式请求失败: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            raise InferServiceError(f"Infer 服务流式请求异常: {str(e)}\n{traceback.format_exc()}")
+
     def __repr__(self) -> str:
         return f"InferClient(base_url={self.base_url})"

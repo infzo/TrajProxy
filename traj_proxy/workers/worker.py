@@ -246,7 +246,7 @@ class ProxyWorker:
         request_repository = RequestRepository(self.db_manager.pool)
 
         # 创建 ProcessorManager
-        self.processor_manager = ProcessorManager(self.db_manager)
+        self.processor_manager = ProcessorManager(self.db_manager, db_url=self.db_url)
         self.app.state.processor_manager = self.processor_manager
 
         # 创建 TranscriptProvider（共享 request_repository）

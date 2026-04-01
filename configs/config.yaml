@@ -37,6 +37,8 @@ database:
 
 # ProcessorManager 配置
 processor_manager:
-  sync_interval: 30           # 模型同步间隔（秒）
-  sync_max_retries: 3         # 同步失败最大重试次数
-  sync_retry_delay: 5         # 同步重试初始延迟（秒），采用指数退避
+  sync_fallback_interval: 300   # 兜底全量同步间隔（秒），默认 5 分钟
+  sync_max_retries: 3           # 同步失败最大重试次数
+  sync_retry_delay: 5           # 同步重试初始延迟（秒），采用指数退避
+  listen_reconnect_delay: 5     # LISTEN 连接重连初始延迟（秒）
+  listen_max_reconnect_delay: 60  # LISTEN 连接重连最大延迟（秒）

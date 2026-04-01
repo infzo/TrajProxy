@@ -7,6 +7,7 @@ Streaming - 流式响应工具
 from typing import AsyncIterator, Dict, Any, Optional
 import traceback
 import json
+import time
 
 from traj_proxy.utils.logger import get_logger
 
@@ -85,6 +86,27 @@ class StreamingResponseGenerator:
                 **self.request_params
             ):
                 yield format_sse(chunk)
+
+            # 处理 stream_options.include_usage
+            stream_options = self.request_params.get("stream_options", {})
+            include_usage = stream_options.get("include_usage", False)
+
+            if include_usage:
+                context = self._context_holder.get('context')
+                if context:
+                    usage_chunk = {
+                        "id": f"chatcmpl-{self.request_id}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": self.streaming_processor.model,
+                        "choices": [],
+                        "usage": {
+                            "prompt_tokens": context.prompt_tokens or 0,
+                            "completion_tokens": context.completion_tokens or 0,
+                            "total_tokens": context.total_tokens or 0
+                        }
+                    }
+                    yield format_sse(usage_chunk)
 
             # 发送结束标记
             yield format_sse("[DONE]")

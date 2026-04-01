@@ -12,8 +12,10 @@ COPY requirements.txt ./requirements.txt
 # 安装Python依赖
 RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 
-# 复制下载脚本
+# 复制脚本
 COPY scripts/download_tokenizer.py ./download_tokenizer.py
+COPY scripts/init_db.py ./scripts/init_db.py
+COPY scripts/entrypoint.sh ./scripts/entrypoint.sh
 
 # 复制 models 目录（如果存在）
 RUN mkdir -p ./models
@@ -29,5 +31,8 @@ EXPOSE 12300-12320
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app:$PYTHONPATH
 
-# 启动命令 - 使用模块方式运行，确保 Python 能找到 traj_proxy 包
-CMD ["python", "-m", "traj_proxy.app"]
+# 赋予执行权限
+RUN chmod +x ./scripts/entrypoint.sh
+
+# 启动命令 - 通过 entrypoint 在启动应用前自动初始化数据库
+CMD ["./scripts/entrypoint.sh"]

@@ -6,7 +6,6 @@ TranscriptProvider FastAPI路由
 
 from fastapi import APIRouter, HTTPException, Request
 from typing import Dict, Any
-import traceback
 
 from traj_proxy.workers.worker import get_transcript_provider as get_provider
 from traj_proxy.utils.validators import validate_session_id

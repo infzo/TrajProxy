@@ -89,8 +89,8 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
 
         # 其他请求参数
         request_params = {}
-        for key in ["max_tokens", "temperature", "top_p", "presence_penalty", "frequency_penalty",
-                    "tools", "tool_choice", "parallel_tool_calls", "documents"]:
+        for key in ["max_tokens", "max_completion_tokens", "temperature", "top_p", "presence_penalty", "frequency_penalty",
+                    "tools", "tool_choice", "parallel_tool_calls", "documents", "stream_options"]:
             if key in body:
                 request_params[key] = body[key]
 
@@ -160,7 +160,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
             )
 
             # 返回 OpenAI 格式响应
-            return context.response
+            return context.raw_response
 
     except HTTPException:
         raise
@@ -213,7 +213,7 @@ async def register_model(request: Request, req: RegisterModelRequest):
                 "token_in_token_out": processor.token_in_token_out,
                 "tool_parser": processor.tool_parser_name,
                 "reasoning_parser": processor.reasoning_parser_name,
-                "sync_info": "模型已持久化到数据库，其他 Worker 将在 30 秒内自动同步"
+                "sync_info": "模型已持久化到数据库，其他 Worker 已通过 LISTEN/NOTIFY 即时通知"
             }
         )
 
@@ -293,7 +293,7 @@ async def list_models_admin(request: Request):
 
 
 # OpenAI 兼容的模型列表路由
-chat_router.get("/models")
+@chat_router.get("/models")
 async def list_models_openai(request: Request):
     """
     列出所有已注册模型（OpenAI 兼容格式）

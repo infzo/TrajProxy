@@ -408,32 +408,19 @@ class TestTokenInTokenOutMode:
         assert "prompt_tokens" in record, "记录缺少 prompt_tokens 字段"
         assert "completion_tokens" in record, "记录缺少 completion_tokens 字段"
 
-
-class TestTextModeComparison:
-    """Text 模式与 Token-in-Token-out 模式对比测试"""
-
     @pytest.mark.integration
     def test_completion_tokens_estimation(
         self,
-        proxy_client: requests.Session
+        proxy_client: requests.Session,
+        token_mode_model_name: str
     ):
         """
-        测试 Text 模式下的 completion_tokens 估算
+        测试 completion_tokens 统计
 
         验证点:
-        - Text 模式下 completion_tokens 不应该为 0
-        - 应该有合理的估算值
+        - completion_tokens 应该大于 0（无论是精确统计还是估算）
         """
-        # 获取一个模型（可能是 Text 模式或 Token 模式）
-        list_response = proxy_client.get(f"{PROXY_URL}/models/")
-        assert list_response.status_code == 200
-
-        models = list_response.json().get("models", [])
-        if not models:
-            pytest.skip("没有可用的模型")
-
-        model_name = models[0].get("model_name")
-        session_id = f"text_mode_test,sample_001,task_001"
+        session_id = f"token_mode_test,sample_001,task_001"
 
         response = proxy_client.post(
             f"{PROXY_URL}/v1/chat/completions",
@@ -442,7 +429,7 @@ class TestTextModeComparison:
                 "x-session-id": session_id
             },
             json={
-                "model": model_name,
+                "model": token_mode_model_name,
                 "messages": [
                     {"role": "user", "content": "请回复一段较长的内容，至少二十个字。"}
                 ],
@@ -458,6 +445,5 @@ class TestTextModeComparison:
         # 验证 completion_tokens 不为 0
         if "usage" in data:
             completion_tokens = data["usage"].get("completion_tokens", 0)
-            # completion_tokens 应该大于 0（无论是精确统计还是估算）
             assert completion_tokens > 0, \
                 f"completion_tokens 应该大于 0，实际为 {completion_tokens}"

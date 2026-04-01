@@ -92,16 +92,6 @@ def get_database_pool_config() -> Dict:
     }
 
 
-def get_ray_config() -> Dict:
-    """
-    获取 ray 配置
-
-    返回:
-        ray 配置字典
-    """
-    return get_config().get("ray", {})
-
-
 def get_processor_manager_config() -> Dict:
     """
     获取 ProcessorManager 配置
@@ -112,14 +102,16 @@ def get_processor_manager_config() -> Dict:
     return get_config().get("processor_manager", {})
 
 
-def get_sync_interval() -> int:
+def get_sync_fallback_interval() -> int:
     """
-    获取模型同步间隔
+    获取兜底全量同步间隔（秒）
+
+    LISTEN/NOTIFY 为主通道，此为兜底机制。
 
     返回:
-        同步间隔（秒）
+        兜底同步间隔（秒），默认 300
     """
-    return get_processor_manager_config().get("sync_interval", 30)
+    return get_processor_manager_config().get("sync_fallback_interval", 300)
 
 
 def get_sync_max_retries() -> int:

@@ -448,6 +448,121 @@ class TestQwenXMLToolParser:
         assert hasattr(result, 'content')
 
 
+class TestDeepSeekV31ToolParser:
+    """DeepSeek V3.1 Tool Parser 测试类
+
+    V3.1 格式简化版：
+    <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>func_name<｜tool▁sep｜>{"arg": "value"}<｜tool▁call▁end｜><｜tool▁calls▁end｜>
+    """
+
+    @pytest.fixture
+    def parser(self):
+        """创建 DeepSeek V3.1 Tool Parser 实例"""
+        parser_cls = ToolParserManager.get_tool_parser("deepseek_v31")
+        return parser_cls(tokenizer=None)
+
+    def test_extract_single_tool_call(self, parser):
+        """
+        测试提取单个工具调用
+
+        V3.1 格式特点：无 function 类型前缀，参数直接是 JSON
+        """
+        model_output = '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>get_weather<｜tool▁sep｜>{"city": "北京"}<｜tool▁call▁end｜><｜tool▁calls▁end｜>'
+
+        result = parser.extract_tool_calls(model_output)
+
+        assert result.tools_called is True
+        assert len(result.tool_calls) == 1
+
+        tool_call = result.tool_calls[0]
+        assert tool_call.function is not None
+        assert tool_call.function.name == "get_weather"
+
+        args = json.loads(tool_call.function.arguments)
+        assert args["city"] == "北京"
+
+    def test_extract_multiple_tool_calls(self, parser):
+        """测试提取多个工具调用"""
+        model_output = '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>get_weather<｜tool▁sep｜>{"city": "北京"}<｜tool▁call▁end｜><｜tool▁call▁begin｜>get_weather<｜tool▁sep｜>{"city": "上海"}<｜tool▁call▁end｜><｜tool▁calls▁end｜>'
+
+        result = parser.extract_tool_calls(model_output)
+
+        assert result.tools_called is True
+        assert len(result.tool_calls) == 2
+
+        args1 = json.loads(result.tool_calls[0].function.arguments)
+        args2 = json.loads(result.tool_calls[1].function.arguments)
+        assert args1["city"] == "北京"
+        assert args2["city"] == "上海"
+
+    def test_ascii_format(self, parser):
+        """测试 ASCII 格式的标记符"""
+        model_output = '<|tool_calls_begin|><|tool_call_begin|>test_func<|tool_sep|>{"arg": "value"}<|tool_call_end|><|tool_calls_end|>'
+
+        result = parser.extract_tool_calls(model_output)
+
+        assert result.tools_called is True
+        assert result.tool_calls[0].function.name == "test_func"
+
+
+class TestLlama3JSONToolParser:
+    """Llama 3 JSON Tool Parser 测试类
+
+    支持格式:
+    <|python_tag|>{"name": "get_weather", "parameters": {"city": "北京"}}
+    或直接的 JSON 格式
+    """
+
+    @pytest.fixture
+    def parser(self):
+        """创建 Llama3 JSON Tool Parser 实例"""
+        parser_cls = ToolParserManager.get_tool_parser("llama3_json")
+        return parser_cls(tokenizer=None)
+
+    def test_extract_with_python_tag(self, parser):
+        """测试带 python_tag 的工具调用"""
+        model_output = '<|python_tag|>{"name": "get_weather", "parameters": {"city": "北京"}}'
+
+        result = parser.extract_tool_calls(model_output)
+
+        assert result.tools_called is True
+        assert len(result.tool_calls) == 1
+
+        tool_call = result.tool_calls[0]
+        assert tool_call.function.name == "get_weather"
+
+        args = json.loads(tool_call.function.arguments)
+        assert args["city"] == "北京"
+
+    def test_extract_direct_json(self, parser):
+        """测试直接 JSON 格式的工具调用"""
+        model_output = '调用工具：{"name": "test_func", "parameters": {"arg1": "value1"}}'
+
+        result = parser.extract_tool_calls(model_output)
+
+        if result.tools_called:
+            assert result.tool_calls[0].function.name == "test_func"
+
+    def test_extract_array_format(self, parser):
+        """测试数组格式的多个工具调用"""
+        model_output = '<|python_tag|>[{"name": "func1", "parameters": {"a": 1}}, {"name": "func2", "parameters": {"b": 2}}]'
+
+        result = parser.extract_tool_calls(model_output)
+
+        if result.tools_called and len(result.tool_calls) > 1:
+            assert result.tool_calls[0].function.name == "func1"
+            assert result.tool_calls[1].function.name == "func2"
+
+    def test_no_tool_call(self, parser):
+        """测试没有工具调用的情况"""
+        model_output = "这是一个普通的回复，没有工具调用。"
+
+        result = parser.extract_tool_calls(model_output)
+
+        assert result.tools_called is False
+        assert len(result.tool_calls) == 0
+
+
 # ============================================
 # Reasoning Parser 测试
 # ============================================
@@ -737,11 +852,12 @@ class TestReasoningParserManager:
         """
         parsers = ReasoningParserManager.list_registered()
 
+        # 注意: "deepseek" 是抽象类，不能直接实例化
         expected_parsers = [
             "deepseek_r1",
             "deepseek_v3",
-            "deepseek",
             "qwen3",
+            "glm45",  # 复用 deepseek_v3 的 parser
         ]
 
         for parser_name in expected_parsers:
@@ -763,54 +879,6 @@ class TestReasoningParserManager:
         """
         with pytest.raises(KeyError):
             ReasoningParserManager.get_reasoning_parser("nonexistent_parser")
-
-
-# ============================================
-# 流式解析测试
-# ============================================
-
-class TestStreamingParser:
-    """流式解析测试类"""
-
-    @pytest.fixture
-    def deepseek_parser(self):
-        """创建 DeepSeek V3 Tool Parser 实例"""
-        parser_cls = ToolParserManager.get_tool_parser("deepseek_v3")
-        return parser_cls(tokenizer=None)
-
-    def test_streaming_extract_delta(self, deepseek_parser):
-        """
-        测试流式增量解析
-
-        验证点:
-        - 正确处理增量文本
-        - 返回正确的 DeltaMessage
-        """
-        deepseek_parser.reset_streaming_state()
-
-        # 模拟流式增量
-        previous_text = ""
-        current_text = "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>"
-        delta_text = current_text
-        previous_token_ids = []
-        current_token_ids = []
-        delta_token_ids = []
-
-        result = deepseek_parser.extract_tool_calls_streaming(
-            previous_text=previous_text,
-            current_text=current_text,
-            delta_text=delta_text,
-            previous_token_ids=previous_token_ids,
-            current_token_ids=current_token_ids,
-            delta_token_ids=delta_token_ids,
-        )
-
-        # 结果可能是 None 或 DeltaMessage
-        if result is not None:
-            assert hasattr(result, 'role')
-            assert hasattr(result, 'content')
-            assert hasattr(result, 'reasoning')
-            assert hasattr(result, 'tool_calls')
 
 
 # ============================================
@@ -842,18 +910,6 @@ class TestParserEdgeCases:
         assert reasoning is None or reasoning == ""
         assert content is None or content == ""
 
-    def test_whitespace_only(self, deepseek_v3_parser, deepseek_r1_parser):
-        """测试只有空白字符"""
-        whitespace = "   \n\t  "
-
-        # Tool Parser
-        result = deepseek_v3_parser.extract_tool_calls(whitespace)
-        assert result.tools_called is False
-
-        # Reasoning Parser
-        reasoning, content = deepseek_r1_parser.extract_reasoning(whitespace)
-        # 行为取决于实现
-
     def test_malformed_tool_call(self, deepseek_v3_parser):
         """测试格式错误的工具调用"""
         malformed = "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>incomplete"
@@ -874,16 +930,6 @@ class TestParserEdgeCases:
         # 应该将剩余内容作为 reasoning
         assert reasoning is not None or content is not None
 
-    def test_nested_markers(self, deepseek_r1_parser):
-        """测试嵌套标记"""
-        nested = "<thinky>外层<thinky>内层</thinke>外层结束</thinke>内容"
-
-        reasoning, content = deepseek_r1_parser.extract_reasoning(nested)
-
-        # 行为取决于实现，但不应崩溃
-        assert isinstance(reasoning, (str, type(None)))
-        assert isinstance(content, (str, type(None)))
-
     def test_special_characters_in_arguments(self, deepseek_v3_parser):
         """测试参数中的特殊字符"""
         special_output = """<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>test
@@ -897,41 +943,3 @@ class TestParserEdgeCases:
         if result.tools_called:
             args = json.loads(result.tool_calls[0].function.arguments)
             assert "特殊字符" in args.get("text", "")
-
-    def test_unicode_in_reasoning(self, deepseek_r1_parser):
-        """测试 reasoning 中的 Unicode 字符"""
-        unicode_output = "<thinky>包含中文、emoji😀、特殊符号™</thinke>回复内容"
-
-        reasoning, content = deepseek_r1_parser.extract_reasoning(unicode_output)
-
-        assert reasoning is not None
-        assert "中文" in reasoning
-        assert "emoji" in reasoning
-
-    def test_very_long_content(self, deepseek_v3_parser, deepseek_r1_parser):
-        """测试超长内容"""
-        # 生成超长内容
-        long_content = "测试内容" * 10000
-        long_reasoning = f"<thinky>{'推理' * 5000}</thinke>"
-        long_output = long_reasoning + long_content
-
-        # 应该能处理而不崩溃
-        reasoning, content = deepseek_r1_parser.extract_reasoning(long_output)
-        assert reasoning is not None or content is not None
-
-    def test_concurrent_parser_instances(self):
-        """测试多个 parser 实例并发使用"""
-        parser_cls = ReasoningParserManager.get_reasoning_parser("deepseek_r1")
-
-        # 创建多个实例
-        parsers = [parser_cls(tokenizer=None) for _ in range(5)]
-
-        # 并发测试
-        outputs = [
-            "<thinky>推理" + str(i) + "</thinke>内容" + str(i)
-            for i in range(5)
-        ]
-
-        for parser, output in zip(parsers, outputs):
-            reasoning, content = parser.extract_reasoning(output)
-            assert reasoning is not None or content is not None

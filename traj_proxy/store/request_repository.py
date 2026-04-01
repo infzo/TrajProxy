@@ -4,12 +4,11 @@ RequestRepository - 请求轨迹记录操作
 负责 request_records 表的 CRUD 操作。
 """
 
-from typing import List, Dict, Any, TYPE_CHECKING
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 import traceback
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
 
-from traj_proxy.store.models import RequestRecord
 from traj_proxy.exceptions import DatabaseError
 
 # 延迟导入以避免循环导入
@@ -31,12 +30,12 @@ class RequestRepository:
         """
         self.pool = pool
 
-    async def insert(self, context: "ProcessContext", tokenizer_path: str):
+    async def insert(self, context: "ProcessContext", tokenizer_path: Optional[str] = None):
         """插入轨迹记录
 
         Args:
             context: 处理上下文
-            tokenizer_path: Tokenizer 路径
+            tokenizer_path: Tokenizer 路径（可选，直接转发模式下不需要）
 
         Raises:
             DatabaseError: 当插入失败时抛出
@@ -46,27 +45,35 @@ class RequestRepository:
                 await conn.execute("""
                     INSERT INTO request_records (
                         unique_id, request_id, session_id, model, tokenizer_path,
-                        messages, prompt_text, token_ids, full_conversation_text,
-                        full_conversation_token_ids, response, response_text,
-                        response_ids, start_time, end_time, processing_duration_ms,
+                        messages, raw_request, raw_response,
+                        text_request, text_response,
+                        prompt_text, token_ids, token_request, token_response,
+                        response_text, response_ids,
+                        full_conversation_text, full_conversation_token_ids,
+                        start_time, end_time, processing_duration_ms,
                         prompt_tokens, completion_tokens, total_tokens,
                         cache_hit_tokens, error, error_traceback
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                     (
                         context.unique_id,
                         context.request_id,
                         context.session_id or "",
                         context.model,
-                        tokenizer_path,
+                        tokenizer_path or "",
                         Json(context.messages),
+                        Json(context.raw_request) if context.raw_request else None,
+                        Json(context.raw_response) if context.raw_response else None,
+                        Json(context.text_request) if context.text_request else None,
+                        Json(context.text_response) if context.text_response else None,
                         context.prompt_text or "",
                         context.token_ids or [],
-                        context.full_conversation_text,
-                        context.full_conversation_token_ids,
-                        Json(context.response) if context.response else None,
+                        Json(context.token_request) if context.token_request else None,
+                        Json(context.token_response) if context.token_response else None,
                         context.response_text,
                         context.response_ids,
+                        context.full_conversation_text,
+                        context.full_conversation_token_ids,
                         context.start_time,
                         context.end_time,
                         context.processing_duration_ms,
@@ -105,7 +112,15 @@ class RequestRepository:
                 async with conn.cursor(row_factory=dict_row) as cur:
                     await cur.execute("""
                         SELECT
-                            *
+                            id, unique_id, request_id, session_id, model, tokenizer_path,
+                            messages, raw_request, raw_response,
+                            text_request, text_response,
+                            prompt_text, token_ids, token_request, token_response,
+                            response_text, response_ids,
+                            full_conversation_text, full_conversation_token_ids,
+                            start_time, end_time, processing_duration_ms,
+                            prompt_tokens, completion_tokens, total_tokens,
+                            cache_hit_tokens, error, error_traceback, created_at
                         FROM request_records
                         WHERE session_id = %s
                         ORDER BY start_time DESC

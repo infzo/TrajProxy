@@ -5,11 +5,13 @@ HTTP 请求格式核心测试
 - 非流式和流式请求
 - Tool Calling 功能
 - 错误处理
+- 完整链路测试（Nginx -> LiteLLM -> TrajProxy）
 
 合并自：
 - test_chat.py 核心测试
 - test_tool_calling.py 核心测试
 - test_tool_calling_advanced.py 核心测试
+- test_full_pipeline.py 链路测试
 """
 
 import pytest
@@ -213,6 +215,119 @@ class TestOpenAIFormat:
         # 验证内容拼接后不为空
         full_content = "".join(content_chunks)
         assert len(full_content) > 0, "流式内容为空"
+
+    @pytest.mark.integration
+    @pytest.mark.slow
+    def test_stream_options_include_usage(
+        self,
+        proxy_client: requests.Session,
+        default_headers: dict,
+        registered_model_name: str
+    ):
+        """
+        测试 stream_options.include_usage 参数
+
+        验证点:
+        - 流式请求成功
+        - 最后一个数据块（[DONE] 之前）包含 usage 字段
+        - usage 包含 prompt_tokens, completion_tokens, total_tokens
+        """
+        response = proxy_client.post(
+            f"{PROXY_URL}/v1/chat/completions",
+            headers=default_headers,
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "说一个字：好"}
+                ],
+                "max_tokens": 10,
+                "temperature": 0,
+                "stream": True,
+                "stream_options": {"include_usage": True}
+            },
+            stream=True,
+            timeout=STREAM_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"流式请求失败: {response.text}"
+
+        # 收集所有数据块
+        chunks = []
+        usage_chunk = None
+
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+
+            if line.startswith("data: "):
+                data_str = line[6:]
+
+                if data_str == "[DONE]":
+                    chunks.append("[DONE]")
+                    break
+
+                try:
+                    chunk = json.loads(data_str)
+                    chunks.append(chunk)
+
+                    # 检查是否是 usage chunk (choices 为空)
+                    if "usage" in chunk and chunk.get("choices") == []:
+                        usage_chunk = chunk
+                except json.JSONDecodeError:
+                    pass
+
+        # 验证收到了数据块
+        assert len(chunks) > 0, "未收到任何流式数据块"
+        assert chunks[-1] == "[DONE]", "流式响应未以 [DONE] 结束"
+
+        # 验证 usage chunk
+        assert usage_chunk is not None, "未收到 usage chunk (stream_options.include_usage=True)"
+        assert "usage" in usage_chunk, "usage chunk 缺少 usage 字段"
+
+        usage = usage_chunk["usage"]
+        assert "prompt_tokens" in usage, "usage 缺少 prompt_tokens"
+        assert "completion_tokens" in usage, "usage 缺少 completion_tokens"
+        assert "total_tokens" in usage, "usage 缺少 total_tokens"
+
+        # 验证 token 数量合理
+        assert usage["prompt_tokens"] > 0, "prompt_tokens 应大于 0"
+        assert usage["completion_tokens"] > 0, "completion_tokens 应大于 0"
+        assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"], \
+            "total_tokens 应等于 prompt_tokens + completion_tokens"
+
+    @pytest.mark.integration
+    def test_max_completion_tokens_parameter(
+        self,
+        proxy_client: requests.Session,
+        default_headers: dict,
+        registered_model_name: str
+    ):
+        """
+        测试 max_completion_tokens 参数
+
+        验证点:
+        - 请求成功返回
+        - 参数被正确转发（通过响应成功判断）
+        """
+        response = proxy_client.post(
+            f"{PROXY_URL}/v1/chat/completions",
+            headers=default_headers,
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "你好"}
+                ],
+                "max_completion_tokens": 50,
+                "temperature": 0
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"请求失败: {response.text}"
+
+        data = response.json()
+        assert "choices" in data, "响应缺少 choices 字段"
+        assert len(data["choices"]) > 0, "choices 为空"
 
     @pytest.mark.integration
     def test_tool_calling_non_stream(
@@ -893,3 +1008,204 @@ class TestErrorHandling:
         # 应该能处理或返回错误
         assert response.status_code in [200, 400, 413], \
             f"预期返回 200/400/413，实际返回 {response.status_code}"
+
+
+# ============================================================
+# 完整链路测试 (Nginx -> LiteLLM -> TrajProxy)
+# ============================================================
+
+class TestFullPipeline:
+    """完整链路测试类 - Nginx -> LiteLLM -> TrajProxy"""
+
+    @pytest.mark.integration
+    def test_openai_pipeline_non_stream(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        openai_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试 OpenAI 非流式请求完整链路
+
+        验证点:
+        - 请求经过 Nginx -> LiteLLM -> TrajProxy
+        - 返回状态码 200
+        - 响应格式符合 OpenAI API 规范
+        """
+        url = f"{nginx_url}/s/{unique_session_id}/v1/chat/completions"
+
+        response = nginx_client.post(
+            url,
+            headers=openai_headers,
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "你好，请回复'测试成功'"}
+                ],
+                "max_tokens": 50,
+                "temperature": 0.7
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200, f"请求失败: {response.text}"
+
+        data = response.json()
+        assert "choices" in data
+        assert len(data["choices"]) > 0
+
+    @pytest.mark.integration
+    @pytest.mark.slow
+    def test_openai_pipeline_stream(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        openai_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试 OpenAI 流式请求完整链路
+        """
+        url = f"{nginx_url}/s/{unique_session_id}/v1/chat/completions"
+
+        response = nginx_client.post(
+            url,
+            headers=openai_headers,
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "说一个字：好"}
+                ],
+                "max_tokens": 10,
+                "stream": True
+            },
+            stream=True,
+            timeout=STREAM_TIMEOUT
+        )
+
+        assert response.status_code == 200
+        chunks = []
+        for line in response.iter_lines(decode_unicode=True):
+            if line and line.startswith("data: "):
+                if line[6:] == "[DONE]":
+                    chunks.append("[DONE]")
+                    break
+                chunks.append(line)
+
+        assert len(chunks) > 0
+        assert chunks[-1] == "[DONE]"
+
+    @pytest.mark.integration
+    def test_claude_pipeline_non_stream(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        claude_headers: dict,
+        registered_model_name: str,
+        unique_session_id: str
+    ):
+        """
+        测试 Claude 非流式请求完整链路
+        """
+        url = f"{nginx_url}/s/{unique_session_id}/v1/messages"
+
+        response = nginx_client.post(
+            url,
+            headers=claude_headers,
+            json={
+                "model": registered_model_name,
+                "max_tokens": 50,
+                "messages": [
+                    {"role": "user", "content": "你好"}
+                ]
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("type") == "message"
+        assert "content" in data
+
+    @pytest.mark.integration
+    def test_litellm_openai_routing(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        openai_headers: dict,
+        registered_model_name: str
+    ):
+        """
+        测试 OpenAI 推理请求通过 litellm 转发
+        """
+        response = nginx_client.post(
+            f"{nginx_url}/v1/chat/completions",
+            headers=openai_headers,
+            json={
+                "model": registered_model_name,
+                "messages": [
+                    {"role": "user", "content": "你好"}
+                ],
+                "max_tokens": 20
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "choices" in data
+
+    @pytest.mark.integration
+    def test_litellm_claude_routing(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str,
+        claude_headers: dict,
+        registered_model_name: str
+    ):
+        """
+        测试 Claude 推理请求通过 litellm 转发
+        """
+        response = nginx_client.post(
+            f"{nginx_url}/v1/messages",
+            headers=claude_headers,
+            json={
+                "model": registered_model_name,
+                "max_tokens": 20,
+                "messages": [
+                    {"role": "user", "content": "你好"}
+                ]
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "content" in data
+        assert "role" in data
+
+    def test_nginx_load_balancing(
+        self,
+        nginx_client: requests.Session,
+        nginx_url: str
+    ):
+        """
+        测试 nginx 对 traj_proxy 的负载均衡
+
+        验证点:
+        - 多次请求被分发到不同的 worker
+        - 所有请求都能正常响应
+        """
+        success_count = 0
+        total_requests = 10
+
+        for i in range(total_requests):
+            response = nginx_client.get(f"{nginx_url}/health")
+            if response.status_code == 200:
+                success_count += 1
+
+        assert success_count == total_requests, \
+            f"负载均衡测试失败: {success_count}/{total_requests} 请求成功"

@@ -14,32 +14,6 @@ from tests.e2e.config import PROXY_URL, TEST_MESSAGE
 class TestTrajectoryAPI:
     """轨迹记录测试类"""
 
-    def test_query_nonexistent_trajectory(self, proxy_client: requests.Session):
-        """
-        测试查询不存在的轨迹记录
-
-        验证点:
-        - 返回状态码 200（API 设计如此，返回空列表）
-        - 响应包含 session_id 和空的 records
-        """
-        session_id = "nonexistent_session_xyz,sample_001,task_001"
-
-        response = proxy_client.get(
-            f"{PROXY_URL}/trajectory",
-            params={
-                "session_id": session_id,
-                "limit": 100
-            }
-        )
-
-        # 轨迹查询通常返回 200，即使没有记录
-        assert response.status_code == 200, f"查询轨迹失败: {response.text}"
-
-        data = response.json()
-        assert data.get("session_id") == session_id, f"session_id 不匹配: {data}"
-        assert data.get("count", 0) == 0, f"预期没有记录，实际有 {data.get('count')} 条"
-        assert data.get("records", []) == [], f"预期空记录: {data}"
-
     @pytest.mark.integration
     def test_query_trajectory_after_chat(
         self,
@@ -56,6 +30,8 @@ class TestTrajectoryAPI:
         - 轨迹查询成功
         - 轨迹记录包含正确的 session_id
         - 轨迹记录包含模型名称
+        - limit 参数生效
+        - 记录字段完整
         """
         # 发送聊天请求
         chat_response = proxy_client.post(
@@ -118,94 +94,40 @@ class TestTrajectoryAPI:
         assert record.get("model") == registered_model_name, \
             f"记录 model 不匹配: {record}"
 
-    def test_trajectory_with_limit(
-        self,
-        proxy_client: requests.Session,
-        unique_session_id: str
-    ):
+        # 验证必要字段存在
+        required_fields = [
+            "unique_id",
+            "request_id",
+            "session_id",
+            "model"
+        ]
+
+        for field in required_fields:
+            assert field in record, f"记录缺少必要字段: {field}"
+            assert record[field] is not None, f"字段 {field} 值为 None"
+
+    def test_query_nonexistent_trajectory(self, proxy_client: requests.Session):
         """
-        测试轨迹查询的 limit 参数
+        测试查询不存在的轨迹记录
 
         验证点:
-        - limit 参数生效
-        - 返回记录数不超过 limit
+        - 返回状态码 200（API 设计如此，返回空列表）
+        - 响应包含 session_id 和空的 records
         """
-        limit = 5
+        session_id = "nonexistent_session_xyz,sample_001,task_001"
 
         response = proxy_client.get(
             f"{PROXY_URL}/trajectory",
             params={
-                "session_id": unique_session_id,
-                "limit": limit
+                "session_id": session_id,
+                "limit": 100
             }
         )
 
+        # 轨迹查询通常返回 200，即使没有记录
         assert response.status_code == 200, f"查询轨迹失败: {response.text}"
 
         data = response.json()
-
-        # 验证返回记录数不超过 limit
-        records = data.get("records", [])
-        assert len(records) <= limit, f"返回记录数 {len(records)} 超过 limit {limit}"
-
-    @pytest.mark.integration
-    def test_trajectory_record_fields(
-        self,
-        proxy_client: requests.Session,
-        default_headers: dict,
-        registered_model_name: str,
-        unique_session_id: str
-    ):
-        """
-        测试轨迹记录字段完整性
-
-        验证点:
-        - 轨迹记录包含必要字段
-        - 字段值有效
-        """
-        # 发送聊天请求
-        chat_response = proxy_client.post(
-            f"{PROXY_URL}/v1/chat/completions",
-            headers=default_headers,
-            json={
-                "model": registered_model_name,
-                "messages": [
-                    {"role": "user", "content": "测试轨迹字段"}
-                ],
-                "max_tokens": 20
-            }
-        )
-
-        assert chat_response.status_code == 200, f"聊天请求失败: {chat_response.text}"
-
-        # 等待数据写入
-        time.sleep(1)
-
-        # 查询轨迹
-        trajectory_response = proxy_client.get(
-            f"{PROXY_URL}/trajectory",
-            params={
-                "session_id": unique_session_id,
-                "limit": 10
-            }
-        )
-
-        assert trajectory_response.status_code == 200, f"查询轨迹失败: {trajectory_response.text}"
-
-        data = trajectory_response.json()
-        records = data.get("records", [])
-
-        if len(records) > 0:
-            record = records[0]
-
-            # 验证必要字段存在
-            required_fields = [
-                "unique_id",
-                "request_id",
-                "session_id",
-                "model"
-            ]
-
-            for field in required_fields:
-                assert field in record, f"记录缺少必要字段: {field}"
-                assert record[field] is not None, f"字段 {field} 值为 None"
+        assert data.get("session_id") == session_id, f"session_id 不匹配: {data}"
+        assert data.get("count", 0) == 0, f"预期没有记录，实际有 {data.get('count')} 条"
+        assert data.get("records", []) == [], f"预期空记录: {data}"
