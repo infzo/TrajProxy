@@ -84,4 +84,13 @@ class ProcessContext:
     stream_buffer_ids: List[int] = field(default_factory=list)  # 流式累积的 token ids
     stream_chunk_count: int = 0                # 已发送的 chunk 数量
     stream_finished: bool = False              # 流式是否结束
+
+    # 流式累积字段（用于构建完整响应）
+    stream_role: Optional[str] = None          # delta.role
+    stream_reasoning: str = ""                 # delta.reasoning（vLLM 扩展）
     stream_tool_calls: Optional[List[Dict[str, Any]]] = None    # 流式累积的 tool_calls
+    stream_function_call: Optional[Dict[str, Any]] = None       # 旧版 function_call
+    stream_finish_reason: Optional[str] = None # 结束原因
+    stream_logprobs: Optional[Dict[str, Any]] = None            # logprobs
+    stream_stop_reason: Optional[Any] = None   # vLLM 扩展字段
+    stream_token_ids: Optional[List[int]] = None                # vLLM 扩展字段

@@ -3,7 +3,7 @@ StreamingProcessor - 流式请求处理器
 
 专门处理流式 LLM 请求，从 Processor 中分离出来。
 """
-from typing import AsyncIterator, Dict, Any, Optional
+from typing import AsyncIterator, Dict, Any, Optional, List
 from datetime import datetime
 import traceback
 
@@ -13,6 +13,46 @@ from traj_proxy.proxy_core.infer_response_parser import InferResponseParser
 from traj_proxy.exceptions import DatabaseError
 
 logger = get_logger(__name__)
+
+
+def _merge_stream_tool_calls(tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """合并流式返回的增量 tool_calls
+
+    流式响应中，同一个 tool_call 会分成多个 chunk 返回，
+    需要按 index 合并。
+
+    Args:
+        tool_calls: 流式累积的 tool_calls 列表
+
+    Returns:
+        合并后的 tool_calls 列表
+    """
+    if not tool_calls:
+        return []
+
+    merged = {}
+    for tc in tool_calls:
+        idx = tc.get("index", 0)
+        if idx not in merged:
+            merged[idx] = {
+                "id": tc.get("id", ""),
+                "type": tc.get("type", "function"),
+                "function": {"name": "", "arguments": ""}
+            }
+        # 更新 id 和 type
+        if tc.get("id"):
+            merged[idx]["id"] = tc["id"]
+        if tc.get("type"):
+            merged[idx]["type"] = tc["type"]
+        # 合并 function
+        if "function" in tc:
+            func = tc["function"]
+            if func.get("name"):
+                merged[idx]["function"]["name"] = func["name"]
+            if func.get("arguments"):
+                merged[idx]["function"]["arguments"] += func["arguments"]
+
+    return list(merged.values())
 
 
 class StreamingProcessor:
@@ -247,14 +287,56 @@ class StreamingProcessor:
                 model=self.model,
                 **request_params
             ):
-                # 提取内容用于存储
+                # 累积流式响应中的所有字段
                 if "choices" in chunk and chunk["choices"]:
-                    delta = chunk["choices"][0].get("delta", {})
+                    choice = chunk["choices"][0]
+                    delta = choice.get("delta", {})
+
+                    # 1. 累积 role
+                    if "role" in delta and delta["role"]:
+                        context.stream_role = delta["role"]
+
+                    # 2. 累积 content
                     if "content" in delta and delta["content"]:
                         context.stream_buffer_text += delta["content"]
-                    # 检查是否结束
-                    if chunk["choices"][0].get("finish_reason"):
+
+                    # 3. 累积 reasoning（vLLM 扩展）
+                    if "reasoning" in delta and delta["reasoning"]:
+                        context.stream_reasoning += delta["reasoning"]
+
+                    # 4. 累积 tool_calls
+                    if "tool_calls" in delta:
+                        if context.stream_tool_calls is None:
+                            context.stream_tool_calls = []
+                        context.stream_tool_calls.extend(delta["tool_calls"])
+
+                    # 5. 累积 function_call（旧版格式兼容）
+                    if "function_call" in delta:
+                        fc = delta["function_call"]
+                        if context.stream_function_call is None:
+                            context.stream_function_call = {"name": "", "arguments": ""}
+                        if "name" in fc:
+                            context.stream_function_call["name"] = fc["name"]
+                        if "arguments" in fc:
+                            context.stream_function_call["arguments"] += fc["arguments"]
+
+                    # 6. 累积 logprobs
+                    if "logprobs" in choice:
+                        context.stream_logprobs = choice["logprobs"]
+
+                    # 7. 累积 vLLM 扩展字段
+                    if "stop_reason" in choice:
+                        context.stream_stop_reason = choice["stop_reason"]
+                    if "token_ids" in choice:
+                        if context.stream_token_ids is None:
+                            context.stream_token_ids = []
+                        context.stream_token_ids.extend(choice["token_ids"])
+
+                    # 8. 检查是否结束
+                    finish_reason = choice.get("finish_reason")
+                    if finish_reason:
                         context.stream_finished = True
+                        context.stream_finish_reason = finish_reason
                         if "usage" in chunk:
                             context.prompt_tokens = chunk["usage"].get("prompt_tokens", 0)
                             context.completion_tokens = chunk["usage"].get("completion_tokens", 0)
@@ -276,18 +358,48 @@ class StreamingProcessor:
                 context.completion_tokens = len(context.response_text) // 4
                 context.total_tokens = (context.prompt_tokens or 0) + context.completion_tokens
 
+            # 构建消息体
+            message = {
+                "role": context.stream_role or "assistant",
+                "content": context.response_text or None
+            }
+
+            # 添加 reasoning（vLLM 扩展）
+            if context.stream_reasoning:
+                message["reasoning"] = context.stream_reasoning
+
+            # 添加 tool_calls
+            if context.stream_tool_calls:
+                message["tool_calls"] = _merge_stream_tool_calls(context.stream_tool_calls)
+
+            # 添加 function_call（旧版兼容）
+            if context.stream_function_call:
+                message["function_call"] = context.stream_function_call
+
+            # 构建选择项
+            choice = {
+                "index": 0,
+                "message": message,
+                "finish_reason": context.stream_finish_reason or "stop"
+            }
+
+            # 添加 logprobs
+            if context.stream_logprobs:
+                choice["logprobs"] = context.stream_logprobs
+
+            # 添加 vLLM 扩展字段
+            if context.stream_stop_reason is not None:
+                choice["stop_reason"] = context.stream_stop_reason
+            if context.stream_token_ids:
+                choice["token_ids"] = context.stream_token_ids
+
             # 构建最终响应（阶段1: raw_response）
-            # 直接转发模式下，raw_response 就是推理服务返回的原始响应
             context.raw_response = {
-                "choices": [{
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": context.response_text
-                    },
-                    "finish_reason": "stop"
-                }],
+                "id": f"chatcmpl-{request_id}",
+                "object": "chat.completion",
+                "created": int(context.start_time.timestamp()),
                 "model": self.model,
+                "choices": [choice],
                 "usage": {
                     "prompt_tokens": context.prompt_tokens,
                     "completion_tokens": context.completion_tokens,
