@@ -70,3 +70,26 @@ curl -X POST http://localhost:12300/v1/chat/completions \
   }'
 
 ```
+
+
+今天(2026-04-02)的Commit修改总结                                                          
+                                         
+  1. b50890f - feat: 添加测试用例                                                           
+   
+  - 删除旧的 manual_test 文档和脚本，新增 tests/verify 目录下的完整测试验证框架             
+                                         
+  2. 999cb46 - fix: 数据库统一public前缀                                                    
+                                         
+  - 统一数据库表前缀为 public，更新仓库层代码和 Docker 配置                                 
+                                         
+  3. 4892092 - fix: xx                                                                      
+                                         
+  - 重构 run-id 和 model-name 逻辑，新增验证器和规则文档                                    
+                                         
+  4. 3aad185 - feat: 重构run-id和model-name逻辑                                             
+                                         
+  - 进一步优化 run-id 和 model-name 的处理逻辑                                              
+                                         
+  5. e49a1cd - fix: 优化注册、列出模型接口                                                  
+                                         
+  - 优化模型注册和列表接口的实现     
