@@ -163,7 +163,7 @@ class InferClient:
         Raises:
             InferServiceError: 当请求失败时抛出
         """
-        url = f"{self.base_url}/v1/completions"
+        url = f"{self.base_url}/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -204,7 +204,7 @@ class InferClient:
         Raises:
             InferServiceError: 当请求失败时抛出
         """
-        url = f"{self.base_url}/v1/completions"
+        url = f"{self.base_url}/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -251,7 +251,7 @@ class InferClient:
         Raises:
             InferServiceError: 当请求失败时抛出
         """
-        url = f"{self.base_url}/v1/chat/completions"
+        url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -305,7 +305,7 @@ class InferClient:
         Raises:
             InferServiceError: 当请求失败时抛出
         """
-        url = f"{self.base_url}/v1/chat/completions"
+        url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"

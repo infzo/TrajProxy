@@ -35,7 +35,7 @@ class TestModelRegistration:
             f"{PROXY_URL}/models/register",
             json={
                 "model_name": test_model_name,
-                "url": "http://localhost:1234",  # 测试用的推理服务地址
+                "url": "http://localhost:1234/v1",  # 测试用的推理服务地址
                 "api_key": "sk-test-key",
                 "tokenizer_path": "Qwen/Qwen3.5-2B",
                 "token_in_token_out": False
@@ -87,7 +87,7 @@ class TestModelRegistration:
             f"{PROXY_URL}/models/register",
             json={
                 "model_name": test_model_name,
-                "url": "http://localhost:1234",
+                "url": "http://localhost:1234/v1",
                 "api_key": "sk-test-key",
                 "tokenizer_path": "Qwen/Qwen3.5-2B",
                 "token_in_token_out": False,
@@ -123,7 +123,7 @@ class TestModelRegistration:
             f"{PROXY_URL}/models/register",
             json={
                 "model_name": test_model_name,
-                "url": "http://localhost:1234",
+                "url": "http://localhost:1234/v1",
                 "api_key": "sk-test-key",
                 "tokenizer_path": "Qwen/Qwen3.5-2B",
                 "token_in_token_out": False,
@@ -162,7 +162,7 @@ class TestModelRegistration:
             json={
                 "run_id": test_run_id,
                 "model_name": test_model_name,
-                "url": "http://localhost:1234",
+                "url": "http://localhost:1234/v1",
                 "api_key": "sk-test-key",
                 "tokenizer_path": "Qwen/Qwen3.5-2B",
                 "token_in_token_out": False
@@ -210,7 +210,7 @@ class TestModelDeletion:
             f"{PROXY_URL}/models/register",
             json={
                 "model_name": registered_model_name,
-                "url": "http://localhost:1234",
+                "url": "http://localhost:1234/v1",
                 "api_key": "sk-test-key",
                 "tokenizer_path": "test/tokenizer"
             }

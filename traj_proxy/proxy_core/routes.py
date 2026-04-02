@@ -352,7 +352,7 @@ async def list_models_openai(request: Request):
         model_list = []
         for info in models_info:
             if info:
-                model_id = f"{info['run_id']}/{info['model_name']}" if info.get('run_id') else info['model_name']
+                model_id = f"{info['model_name']},{info['run_id']}" if info.get('run_id') else info['model_name']
                 model_list.append({
                     "id": model_id,
                     "object": "model",

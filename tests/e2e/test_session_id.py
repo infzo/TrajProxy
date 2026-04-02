@@ -249,7 +249,7 @@ class TestRunIdParsing:
                 json={
                     "run_id": run_id,
                     "model_name": model_name,
-                    "url": "http://localhost:12345",
+                    "url": "http://localhost:12345/v1",
                     "api_key": "sk-test",
                     "tokenizer_path": "Qwen/Qwen3.5-2B"
                 }
@@ -298,7 +298,7 @@ class TestRunIdParsing:
                 json={
                     "run_id": run_id_in_model,
                     "model_name": model_name,
-                    "url": "http://localhost:12345",
+                    "url": "http://localhost:12345/v1",
                     "api_key": "sk-test",
                     "tokenizer_path": "Qwen/Qwen3.5-2B"
                 }
@@ -357,7 +357,7 @@ class TestRunIdRouting:
                 json={
                     "run_id": run_id_1,
                     "model_name": base_model_name,
-                    "url": "http://localhost:11111",
+                    "url": "http://localhost:11111/v1",
                     "api_key": "sk-test-1",
                     "tokenizer_path": "Qwen/Qwen3.5-2B"
                 }
@@ -368,7 +368,7 @@ class TestRunIdRouting:
                 json={
                     "run_id": run_id_2,
                     "model_name": base_model_name,
-                    "url": "http://localhost:22222",
+                    "url": "http://localhost:22222/v1",
                     "api_key": "sk-test-2",
                     "tokenizer_path": "Qwen/Qwen3.5-2B"
                 }
@@ -416,7 +416,7 @@ class TestRunIdRouting:
                 json={
                     "run_id": "",  # 空值会转为 DEFAULT
                     "model_name": model_name,
-                    "url": "http://localhost:12345",
+                    "url": "http://localhost:12345/v1",
                     "api_key": "sk-test",
                     "tokenizer_path": "Qwen/Qwen3.5-2B"
                 }
@@ -466,7 +466,7 @@ class TestRunIdRouting:
                 json={
                     "run_id": "",
                     "model_name": model_name,
-                    "url": "http://localhost:12345",
+                    "url": "http://localhost:12345/v1",
                     "api_key": "sk-test",
                     "tokenizer_path": "Qwen/Qwen3.5-2B"
                 }
