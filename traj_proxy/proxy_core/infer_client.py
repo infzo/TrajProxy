@@ -139,6 +139,8 @@ class InferClient:
         for param in extra_params:
             if param in kwargs and kwargs[param] is not None:
                 request_body[param] = kwargs[param]
+        request_body['return_token_ids'] = True # 强制返回 token ids，便于后续处理
+        request_body['logprobs'] = 1
 
         return request_body
 
@@ -177,6 +179,7 @@ class InferClient:
             response = await client.post(url, json=request_body, headers=headers)
             response.raise_for_status()
             logger.debug(f"[{model}] Infer 响应: status={response.status_code}")
+            logger.error(f"request_body: {request_body}, response: {response.json()}")
             return response.json()
         except httpx.HTTPStatusError as e:
             raise InferServiceError(f"Infer 服务请求失败: {e.response.status_code} - {e.response.text}")
