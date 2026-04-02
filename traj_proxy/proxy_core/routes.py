@@ -115,12 +115,12 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
             session_id = request.state.session_id_from_path
 
         # 校验 model 参数格式
-        valid, msg, actual_model = validate_model_for_inference(model or "")
+        valid, msg, _ = validate_model_for_inference(model or "")
         if not valid:
             raise HTTPException(status_code=422, detail=msg)
 
-        # 解析 model 和 run_id
-        actual_model, run_id = _parse_model_and_run_id(actual_model, session_id)
+        # 解析 model 和 run_id（使用原始 model 参数）
+        actual_model, run_id = _parse_model_and_run_id(model, session_id)
 
         # 其他请求参数
         request_params = {}
