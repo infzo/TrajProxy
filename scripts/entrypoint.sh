@@ -75,7 +75,7 @@ def init_database():
             # request_records 表
             print("  创建 request_records 表...")
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS request_records (
+                CREATE TABLE IF NOT EXISTS public.request_records (
                     id SERIAL PRIMARY KEY,
                     unique_id TEXT NOT NULL UNIQUE,
                     request_id TEXT NOT NULL,
@@ -128,15 +128,15 @@ def init_database():
 
             # request_records 索引
             print("  创建 request_records 索引...")
-            conn.execute("CREATE INDEX IF NOT EXISTS request_records_session_id_idx ON request_records (session_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS request_records_request_id_idx ON request_records (request_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS request_records_unique_id_idx ON request_records (unique_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS request_records_start_time_idx ON request_records (start_time DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS request_records_session_id_idx ON public.request_records (session_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS request_records_request_id_idx ON public.request_records (request_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS request_records_unique_id_idx ON public.request_records (unique_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS request_records_start_time_idx ON public.request_records (start_time DESC)")
 
             # model_registry 表
             print("  创建 model_registry 表...")
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS model_registry (
+                CREATE TABLE IF NOT EXISTS public.model_registry (
                     id SERIAL PRIMARY KEY,
                     run_id TEXT NOT NULL DEFAULT '',
                     model_name TEXT NOT NULL,
@@ -154,9 +154,9 @@ def init_database():
 
             # model_registry 索引
             print("  创建 model_registry 索引...")
-            conn.execute("CREATE INDEX IF NOT EXISTS model_registry_run_id_idx ON model_registry (run_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS model_registry_model_name_idx ON model_registry (model_name)")
-            conn.execute("CREATE INDEX IF NOT EXISTS model_registry_updated_at_idx ON model_registry (updated_at DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS model_registry_run_id_idx ON public.model_registry (run_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS model_registry_model_name_idx ON public.model_registry (model_name)")
+            conn.execute("CREATE INDEX IF NOT EXISTS model_registry_updated_at_idx ON public.model_registry (updated_at DESC)")
 
             # 兼容性：删除旧列（如果存在）
             print("  检查 request_records 表列兼容性...")
@@ -165,18 +165,18 @@ def init_database():
                 BEGIN
                     -- 删除旧的 response 列
                     IF EXISTS (SELECT 1 FROM information_schema.columns
-                               WHERE table_name='request_records' AND column_name='response') THEN
-                        ALTER TABLE request_records DROP COLUMN response;
+                               WHERE table_schema='public' AND table_name='request_records' AND column_name='response') THEN
+                        ALTER TABLE public.request_records DROP COLUMN response;
                     END IF;
                     -- 删除旧的 infer_request_body 列
                     IF EXISTS (SELECT 1 FROM information_schema.columns
-                               WHERE table_name='request_records' AND column_name='infer_request_body') THEN
-                        ALTER TABLE request_records DROP COLUMN infer_request_body;
+                               WHERE table_schema='public' AND table_name='request_records' AND column_name='infer_request_body') THEN
+                        ALTER TABLE public.request_records DROP COLUMN infer_request_body;
                     END IF;
                     -- 删除旧的 infer_response 列
                     IF EXISTS (SELECT 1 FROM information_schema.columns
-                               WHERE table_name='request_records' AND column_name='infer_response') THEN
-                        ALTER TABLE request_records DROP COLUMN infer_response;
+                               WHERE table_schema='public' AND table_name='request_records' AND column_name='infer_response') THEN
+                        ALTER TABLE public.request_records DROP COLUMN infer_response;
                     END IF;
                 END $$;
             """)
@@ -187,12 +187,12 @@ def init_database():
                 DO $$
                 BEGIN
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                                   WHERE table_name='model_registry' AND column_name='tool_parser') THEN
-                        ALTER TABLE model_registry ADD COLUMN tool_parser TEXT NOT NULL DEFAULT '';
+                                   WHERE table_schema='public' AND table_name='model_registry' AND column_name='tool_parser') THEN
+                        ALTER TABLE public.model_registry ADD COLUMN tool_parser TEXT NOT NULL DEFAULT '';
                     END IF;
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                                   WHERE table_name='model_registry' AND column_name='reasoning_parser') THEN
-                        ALTER TABLE model_registry ADD COLUMN reasoning_parser TEXT NOT NULL DEFAULT '';
+                                   WHERE table_schema='public' AND table_name='model_registry' AND column_name='reasoning_parser') THEN
+                        ALTER TABLE public.model_registry ADD COLUMN reasoning_parser TEXT NOT NULL DEFAULT '';
                     END IF;
                 END $$;
             """)
@@ -204,11 +204,12 @@ def init_database():
                     -- 检查 tokenizer_path 是否有 NOT NULL 约束
                     IF EXISTS (
                         SELECT 1 FROM information_schema.columns
-                        WHERE table_name='model_registry'
+                        WHERE table_schema='public'
+                        AND table_name='model_registry'
                         AND column_name='tokenizer_path'
                         AND is_nullable='NO'
                     ) THEN
-                        ALTER TABLE model_registry ALTER COLUMN tokenizer_path DROP NOT NULL;
+                        ALTER TABLE public.model_registry ALTER COLUMN tokenizer_path DROP NOT NULL;
                     END IF;
                 END $$;
             """)

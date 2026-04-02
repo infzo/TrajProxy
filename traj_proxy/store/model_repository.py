@@ -67,7 +67,7 @@ class ModelRepository:
             async with self.pool.connection() as conn:
                 now = datetime.now()
                 await conn.execute("""
-                    INSERT INTO model_registry
+                    INSERT INTO public.model_registry
                     (run_id, model_name, url, api_key, tokenizer_path, token_in_token_out,
                      tool_parser, reasoning_parser, updated_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -130,7 +130,7 @@ class ModelRepository:
         try:
             async with self.pool.connection() as conn:
                 result = await conn.execute("""
-                    DELETE FROM model_registry
+                    DELETE FROM public.model_registry
                     WHERE run_id = %s AND model_name = %s
                 """, (run_id, model_name))
 
@@ -169,7 +169,7 @@ class ModelRepository:
                     await cur.execute("""
                         SELECT run_id, model_name, url, api_key, tokenizer_path, token_in_token_out,
                                tool_parser, reasoning_parser, updated_at
-                        FROM model_registry
+                        FROM public.model_registry
                         ORDER BY run_id, model_name
                     """)
                     rows = await cur.fetchall()
@@ -214,7 +214,7 @@ class ModelRepository:
                     await cur.execute("""
                         SELECT run_id, model_name, url, api_key, tokenizer_path,
                                token_in_token_out, tool_parser, reasoning_parser, updated_at
-                        FROM model_registry
+                        FROM public.model_registry
                         WHERE run_id = %s AND model_name = %s
                     """, (run_id, model_name))
                     row = await cur.fetchone()

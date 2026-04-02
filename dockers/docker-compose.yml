@@ -100,7 +100,8 @@ services:
       - LOG_LEVEL=DEBUG
       - LOG_DIR=/app/logs
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:12300/health')\""]

@@ -43,7 +43,7 @@ class RequestRepository:
         try:
             async with self.pool.connection() as conn:
                 await conn.execute("""
-                    INSERT INTO request_records (
+                    INSERT INTO public.request_records (
                         unique_id, request_id, session_id, model, tokenizer_path,
                         messages, raw_request, raw_response,
                         text_request, text_response,
@@ -121,7 +121,7 @@ class RequestRepository:
                             start_time, end_time, processing_duration_ms,
                             prompt_tokens, completion_tokens, total_tokens,
                             cache_hit_tokens, error, error_traceback, created_at
-                        FROM request_records
+                        FROM public.request_records
                         WHERE session_id = %s
                         ORDER BY start_time DESC
                         LIMIT %s
