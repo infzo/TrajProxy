@@ -40,7 +40,7 @@ class InferClient:
         self.api_key = api_key
         
         # requests 专用配置 (连接超时, 读取超时)
-        self._timeout_config = (connect_timeout, timeout)
+        self._timeout_config = 300 #(connect_timeout, timeout)
         self._pool_size = max_connections
         
         self._session: Optional[requests.Session] = None

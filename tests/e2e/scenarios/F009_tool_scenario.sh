@@ -12,7 +12,7 @@ echo "========================================"
 echo ""
 
 # 测试配置
-TOOL_TEST_PORT=12345
+TOOL_TEST_PORT=12300
 TOOL_TEST_BASE_URL="http://127.0.0.1:${TOOL_TEST_PORT}"
 TOOL_TEST_MODEL_NAME="tool-test-model"
 TOOL_TEST_RUN_ID="tool-run-009"
@@ -71,6 +71,7 @@ assert_eq "$TOOL_TEST_TOOL_PARSER" "$REGISTER_TOOL_PARSER" "tool_parser 应为 $
 # 验证 token_in_token_out 配置
 REGISTER_TITO=$(json_get_bool "$REGISTER_BODY" "token_in_token_out")
 assert_eq "true" "$REGISTER_TITO" "token_in_token_out 应为 true"
+sleep 3
 
 echo ""
 

@@ -2,6 +2,7 @@
 
 ```shell
 docker build --platform linux/amd64 -t traj-proxy-x86:0.0.6 -f dockers/Dockerfile .
+docker build -f dockers/Dockerfile .
 
 ## 查询模型
 curl http://localhost:12345/models

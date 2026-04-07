@@ -138,7 +138,10 @@ class WorkerManager:
                     "PYTHONPATH": pythonpath
                 },
                 "excludes": [
-                    "/app/models/"
+                    "models/",  # 相对于working_dir的路径，排除models目录
+                    "*.pyc",
+                    "__pycache__/",
+                    ".git/"
                 ]
             },
             log_to_driver=True,

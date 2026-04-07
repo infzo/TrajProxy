@@ -36,10 +36,6 @@ def get_logger(
     if log_dir is None:
         log_dir = os.getenv("LOG_DIR", "/app/logs")
 
-    # 创建日志目录
-    log_path = Path(log_dir)
-    log_path.mkdir(parents=True, exist_ok=True)
-
     # 创建日志记录器
     logger = logging.getLogger(name)
 
@@ -58,16 +54,32 @@ def get_logger(
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    # 创建文件处理器 - 使用 RotatingFileHandler 实现日志轮转
-    file_handler = RotatingFileHandler(
-        filename=log_path / "traj_proxy.log",
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=5,  # 保留 5 个备份
-        encoding='utf-8'
-    )
-    file_handler.setLevel(level)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    # 尝试创建日志目录并添加文件处理器
+    log_path = Path(log_dir)
+    file_logging_enabled = False
+    try:
+        log_path.mkdir(parents=True, exist_ok=True)
+        file_logging_enabled = True
+    except (OSError, PermissionError) as e:
+        # 无法创建日志目录，仅使用控制台日志
+        import warnings
+        warnings.warn(f"Cannot create log directory {log_dir}: {e}. Falling back to console-only logging.")
+
+    if file_logging_enabled:
+        # 创建文件处理器 - 使用 RotatingFileHandler 实现日志轮转
+        try:
+            file_handler = RotatingFileHandler(
+                filename=log_path / "traj_proxy.log",
+                maxBytes=10 * 1024 * 1024,  # 10MB
+                backupCount=5,  # 保留 5 个备份
+                encoding='utf-8'
+            )
+            file_handler.setLevel(level)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except (OSError, PermissionError) as e:
+            import warnings
+            warnings.warn(f"Cannot create log file: {e}. Falling back to console-only logging.")
 
     # 创建控制台处理器 - 输出到标准输出（docker logs）
     console_handler = logging.StreamHandler()

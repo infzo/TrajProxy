@@ -193,13 +193,41 @@ class PromptBuilder:
                 tool_calls = choices[0].get("tool_calls")
                 finish_reason = choices[0].get("finish_reason", "stop")
 
+        from vllm.entrypoints.openai.chat_completion.protocol import (
+                    ChatCompletionRequest,
+                    ChatCompletionToolsParam,
+                )
+        from vllm.entrypoints.openai.engine.protocol import FunctionDefinition
+
+                # 构造 ChatCompletionRequest 对象
+        tools_raw = context.request_params.get("tools", [])
+        tools_list = []
+        for tool in tools_raw:
+                    if tool.get("type") == "function":
+                        func_def = tool.get("function", {})
+                        tools_list.append(ChatCompletionToolsParam(
+                            type="function",
+                            function=FunctionDefinition(
+                                name=func_def.get("name", ""),
+                                description=func_def.get("description", ""),
+                                parameters=func_def.get("parameters", {})
+                            )
+                        ))
+
+        request = ChatCompletionRequest(
+                    messages=context.messages,
+                    model=self.model,
+                    tools=tools_list,
+                    tool_choice=context.request_params.get("tool_choice", "auto"),
+                    parallel_tool_calls=context.request_params.get("parallel_tool_calls", True)
+                )
+
         # 2. 如果没有预置 tool_calls，尝试从响应文本解析
         if not tool_calls and self.tool_parser:
             try:
-                tools = context.request_params.get("tools")
                 extracted = self.tool_parser.extract_tool_calls(
                     response_text,
-                    tools=tools
+                    request
                 )
                 if extracted.tools_called:
                     tool_calls = [
@@ -225,8 +253,9 @@ class PromptBuilder:
                 include_reasoning = context.request_params.get("include_reasoning", True)
                 if include_reasoning:
                     extracted_reasoning, extracted_content = self.reasoning_parser.extract_reasoning(
-                        content or response_text
+                        content or response_text, request
                     )
+                    logger.info(f"[{context.unique_id}] 开始解析推理内容, {content=}, {response_text=}, {extracted_reasoning=}, {extracted_content=}")
                     if extracted_reasoning:
                         reasoning = extracted_reasoning
                         content = extracted_content
