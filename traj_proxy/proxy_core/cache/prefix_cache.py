@@ -1,20 +1,25 @@
 """
-TokenBuilder - Token 处理器
+PrefixMatchCache - 前缀匹配缓存策略
 
-负责 Text ↔ TokenIds 转换和前缀匹配缓存策略。
+通过匹配历史对话的前缀来优化 Token 编码。
 """
 
-from typing import List, Optional, Dict, Any
-from transformers import AutoTokenizer
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
-from traj_proxy.proxy_core.context import ProcessContext
-from traj_proxy.store.request_repository import RequestRepository
+from traj_proxy.proxy_core.cache.base import BaseCacheStrategy
+from traj_proxy.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from traj_proxy.proxy_core.context import ProcessContext
+    from traj_proxy.store.request_repository import RequestRepository
+
+logger = get_logger(__name__)
 
 
-class TokenBuilder:
-    """Token 处理器 - 负责 Text ↔ TokenIds 转换和缓存
+class PrefixMatchCache(BaseCacheStrategy):
+    """前缀匹配缓存策略
 
-    前缀匹配策略：
+    优化策略：
     1. 根据 session_id 查询数据库获取该会话的所有历史请求
     2. 用当前完整对话文本（请求+响应）与历史完整对话文本进行前缀匹配
     3. 匹配部分使用缓存的完整对话 token_ids
@@ -22,44 +27,37 @@ class TokenBuilder:
     5. 拼接得到完整的 token_ids
     """
 
-    def __init__(self, model: str, tokenizer_path: str, request_repository: RequestRepository = None):
-        """初始化 TokenBuilder
+    def __init__(self, request_repository: "RequestRepository"):
+        """初始化 PrefixMatchCache
 
         Args:
-            model: 模型名称
-            tokenizer_path: Tokenizer 路径
-            request_repository: 请求记录仓库，用于查询历史请求进行前缀匹配
+            request_repository: 请求记录仓库，用于查询历史请求
         """
-        self.model = model
-        self.tokenizer_path = tokenizer_path
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
         self.request_repository = request_repository
 
-    async def encode_text(
+    async def encode_with_cache(
         self,
         text: str,
-        context: ProcessContext
+        context: "ProcessContext",
+        tokenizer
     ) -> List[int]:
-        """将文本编码为 token IDs
-
-        使用前缀匹配策略：
-        1. 如果有 session_id，查询数据库获取历史请求
-        2. 找到最长前缀匹配
-        3. 拼接缓存和新生成的 token_ids
+        """使用前缀匹配缓存优化文本编码
 
         Args:
             text: 待编码的文本
             context: 处理上下文
+            tokenizer: tokenizer 实例
 
         Returns:
             token ID 列表
         """
+        # 初始化上下文缓存信息
         context.uncached_text = text
         context.cached_token_ids = []
 
         # 如果没有 session_id 或 request_repository，直接编码
         if not context.session_id or not self.request_repository:
-            token_ids = self.tokenizer.encode(text, add_special_tokens=False)
+            token_ids = tokenizer.encode(text, add_special_tokens=False)
             context.uncached_token_ids = token_ids
             return token_ids
 
@@ -84,7 +82,7 @@ class TokenBuilder:
 
             # 编码未匹配的部分
             if uncached_text:
-                uncached_tokens = self.tokenizer.encode(uncached_text, add_special_tokens=False)
+                uncached_tokens = tokenizer.encode(uncached_text, add_special_tokens=False)
                 context.uncached_token_ids = uncached_tokens
                 return (cached_tokens or []) + uncached_tokens
             else:
@@ -92,7 +90,7 @@ class TokenBuilder:
                 return cached_tokens or []
         else:
             # 没有匹配，直接编码
-            token_ids = self.tokenizer.encode(text, add_special_tokens=False)
+            token_ids = tokenizer.encode(text, add_special_tokens=False)
             context.uncached_token_ids = token_ids
             return token_ids
 
@@ -124,50 +122,3 @@ class TokenBuilder:
                 longest_length = len(cached_text)
 
         return longest_match
-
-    async def decode_tokens(
-        self,
-        token_ids: List[int],
-        context: ProcessContext
-    ) -> str:
-        """将 token IDs 解码为文本
-
-        Args:
-            token_ids: token ID 列表
-            context: 处理上下文
-
-        Returns:
-            解码后的文本
-        """
-        return self.tokenizer.decode(token_ids, skip_special_tokens=False)
-
-    def decode_tokens_streaming(
-        self,
-        token_ids: List[int],
-        context: ProcessContext
-    ) -> str:
-        """流式解码 token IDs 为文本
-
-        增量解码，处理 UTF-8 边界问题，确保不会在多字节字符中间截断。
-
-        Args:
-            token_ids: 待解码的 token ID 列表（增量）
-            context: 处理上下文
-
-        Returns:
-            本次可输出的文本（可能为空字符串）
-        """
-        # 追加到缓冲区
-        context.stream_buffer_ids.extend(token_ids)
-
-        # 尝试解码整个缓冲区
-        full_text = self.tokenizer.decode(
-            context.stream_buffer_ids,
-            skip_special_tokens=False
-        )
-
-        # 计算新增的文本
-        new_text = full_text[len(context.stream_buffer_text):]
-        context.stream_buffer_text = full_text
-
-        return new_text

@@ -29,12 +29,13 @@ _vllm_compat_path = str(_vllm_compat_dir)
 if _vllm_compat_path not in sys.path:
     sys.path.insert(0, _vllm_compat_path)
 
-from traj_proxy.proxy_core.parsers.parser_manager import ParserManager
+from traj_proxy.proxy_core.parsers.parser_manager import ParserManager, Parser
 
 # 确保 vllm 兼容层已初始化
 from traj_proxy.proxy_core.parsers.vllm_compat import ensure_initialized
 
 __all__ = [
     "ParserManager",
+    "Parser",
     "ensure_initialized",
 ]

@@ -92,9 +92,12 @@ class InferResponseParser:
                 else:
                     content = text
 
-            # 扩展格式：直接返回 token_ids
+            # 扩展格式：直接返回 token_ids（多种可能的字段名）
             if "token_ids" in choice:
                 token_ids = choice["token_ids"]
+            elif "output_token_ids" in choice:
+                # vLLM 扩展格式
+                token_ids = choice["output_token_ids"]
 
             # 处理 tool_calls
             if "tool_calls" in choice:

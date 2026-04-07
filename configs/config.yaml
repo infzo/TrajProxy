@@ -30,9 +30,9 @@ database:
   url: "postgresql://llmproxy:dbpassword9090@db:5432/traj_proxy"
   # 连接池配置
   pool:
-    min_size: 20               # 最小连接数
-    max_size: 100              # 最大连接数
-    timeout: 30                 # 连接超时时间（秒）
+    min_size: 50               # 最小连接数
+    max_size: 100             # 最大连接数
+    timeout: 60                # 连接超时时间（秒）
 
 # ProcessorManager 配置
 processor_manager:

@@ -29,7 +29,7 @@ class InferClient:
         api_key: Optional[str] = None,
         timeout: float = 300.0,
         connect_timeout: float = 60.0,
-        max_connections: int = 100,
+        max_connections: int = 1000,
         **kwargs
     ):
         """初始化 InferClient"""

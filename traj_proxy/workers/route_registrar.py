@@ -1,7 +1,7 @@
 """
 路由注册器
 
-管理 Worker 的路由注册，提供解耦的路路由组合方式
+管理 Worker 的路由注册，提供解耦的路由组合方式
 """
 from fastapi import FastAPI
 
@@ -14,7 +14,7 @@ class RouteRegistrar:
 
     def register_proxy_routes(self):
         """注册 ProxyCore 相关路由"""
-        from traj_proxy.proxy_core.routes import (
+        from traj_proxy.serve.routes import (
             chat_router,
             model_router,
         )
@@ -28,7 +28,7 @@ class RouteRegistrar:
 
     def register_transcript_routes(self):
         """注册 TranscriptProvider 相关路由"""
-        from traj_proxy.transcript_provider.routes import transcript_router
+        from traj_proxy.serve.routes import transcript_router
 
         # 使用 include_router 保持异常处理一致性
         self.app.include_router(transcript_router, tags=["Transcript"])

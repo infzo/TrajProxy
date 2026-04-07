@@ -9,12 +9,12 @@ from typing import Optional
 import time
 import traceback
 import uuid
-import logging
 
 from traj_proxy.store.database_manager import DatabaseManager
 from traj_proxy.store.request_repository import RequestRepository
 from traj_proxy.proxy_core.processor_manager import ProcessorManager
-from traj_proxy.transcript_provider.provider import TranscriptProvider
+from traj_proxy.store.model_synchronizer import ModelSynchronizer
+from traj_proxy.proxy_core.provider import TrajectoryProvider
 from traj_proxy.utils.logger import get_logger
 from traj_proxy.utils.config import get_database_pool_config
 from traj_proxy.utils.validators import normalize_run_id
@@ -55,7 +55,7 @@ def get_processor_manager(request: Optional[Request] = None) -> ProcessorManager
     return pm
 
 
-def get_transcript_provider(request: Optional[Request] = None) -> TranscriptProvider:
+def get_transcript_provider(request: Optional[Request] = None) -> TrajectoryProvider:
     """
     获取 TranscriptProvider 实例
 
@@ -137,7 +137,8 @@ class ProxyWorker:
         self.db_url = db_url
         self.db_manager: Optional[DatabaseManager] = None
         self.processor_manager: Optional[ProcessorManager] = None
-        self.transcript_provider: Optional[TranscriptProvider] = None
+        self.model_synchronizer: Optional[ModelSynchronizer] = None
+        self.transcript_provider: Optional[TrajectoryProvider] = None
 
         # 设置中间件和路由
         self._setup_middleware()
@@ -247,15 +248,22 @@ class ProxyWorker:
         request_repository = RequestRepository(self.db_manager.pool)
 
         # 创建 ProcessorManager
-        self.processor_manager = ProcessorManager(self.db_manager, db_url=self.db_url)
+        self.processor_manager = ProcessorManager(self.db_manager)
         self.app.state.processor_manager = self.processor_manager
 
         # 创建 TranscriptProvider（共享 request_repository）
-        self.transcript_provider = TranscriptProvider(request_repository)
+        self.transcript_provider = TrajectoryProvider(request_repository)
         self.app.state.transcript_provider = self.transcript_provider
 
-        # 启动模型同步
-        await self.processor_manager.start_sync()
+        # 创建 ModelSynchronizer 并启动同步
+        self.model_synchronizer = ModelSynchronizer(
+            model_registry=self.processor_manager.model_registry,
+            db_url=self.db_url,
+            on_model_register=self.processor_manager.register_from_config,
+            on_model_unregister=self.processor_manager.unregister_by_key,
+            on_full_sync=self.processor_manager.full_sync,
+        )
+        await self.model_synchronizer.start()
 
         # 注册预置模型（不持久化到数据库）
         if models_config:
@@ -281,9 +289,9 @@ class ProxyWorker:
 
     async def shutdown(self):
         """关闭资源"""
-        if self.processor_manager:
+        if self.model_synchronizer:
             try:
-                await self.processor_manager.stop_sync()
+                await self.model_synchronizer.stop()
             except Exception as e:
                 logger.error(f"停止同步失败: {e}\n{traceback.format_exc()}")
 

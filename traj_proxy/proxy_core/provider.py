@@ -1,5 +1,5 @@
 """
-TranscriptProvider - 转录提供者
+TrajectoryProvider - 转录提供者
 
 负责处理轨迹记录查询的业务逻辑
 """
@@ -8,14 +8,14 @@ from typing import Dict, Any
 from traj_proxy.store.request_repository import RequestRepository
 
 
-class TranscriptProvider:
+class TrajectoryProvider:
     """转录提供者 - 处理轨迹记录查询业务逻辑
 
     封装数据库访问逻辑，为 routes 提供业务接口
     """
 
     def __init__(self, request_repository: RequestRepository):
-        """初始化 TranscriptProvider
+        """初始化 TrajectoryProvider
 
         Args:
             request_repository: 请求记录仓库

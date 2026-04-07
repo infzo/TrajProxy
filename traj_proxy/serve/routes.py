@@ -1,52 +1,39 @@
 """
-ProxyCore FastAPI路由
+FastAPI 路由定义
 
-处理LLM请求转发相关路由
+统一处理所有 HTTP 接口：
+- 聊天补全接口
+- 模型管理接口
+- 轨迹查询接口
 """
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
+from typing import Dict, Any
+import json
+import traceback
+import uuid
+
 from traj_proxy.utils.logger import get_logger
-from traj_proxy.proxy_core.processor_manager import (
+from traj_proxy.serve.schemas import (
     RegisterModelRequest,
     RegisterModelResponse,
     DeleteModelResponse,
 )
-from traj_proxy.proxy_core.streaming import StreamingResponseGenerator
+from traj_proxy.serve.dependencies import get_processor_manager
 from traj_proxy.exceptions import DatabaseError
 from traj_proxy.utils.validators import (
-    validate_session_id,
-    validate_model_name,
     validate_model_for_inference,
+    validate_session_id,
     normalize_run_id,
-    DEFAULT_RUN_ID,
 )
-import traceback
-import uuid
 
+# 路由定义
 chat_router = APIRouter()
 model_router = APIRouter()
+transcript_router = APIRouter()
+
 logger = get_logger(__name__)
-
-
-def _get_processor_manager(request: Request):
-    """
-    从请求上下文获取 ProcessorManager
-
-    Args:
-        request: FastAPI Request 对象
-
-    Returns:
-        ProcessorManager 实例
-
-    Raises:
-        HTTPException: 如果 ProcessorManager 未初始化
-    """
-    pm = getattr(request.app.state, "processor_manager", None)
-    if pm is None:
-        logger.error("ProcessorManager 未初始化")
-        raise HTTPException(status_code=500, detail="服务未初始化")
-    return pm
 
 
 def _parse_model_and_run_id(model: str, session_id: str = None) -> tuple:
@@ -85,6 +72,8 @@ def _parse_model_and_run_id(model: str, session_id: str = None) -> tuple:
     # 1.1, 1.2: 默认 run_id
     return actual_model, normalize_run_id(None)
 
+
+# ========== 聊天补全接口 ==========
 
 @chat_router.post("/chat/completions")
 async def chat_completions(request: Request, background_tasks: BackgroundTasks):
@@ -136,7 +125,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
         logger.info(f"[{request_id}] 处理聊天补全请求: model={actual_model}, run_id={run_id}, stream={stream}, messages={len(messages)}")
 
         # 获取 ProcessorManager 实例（从请求上下文）
-        processor_manager = _get_processor_manager(request)
+        processor_manager = get_processor_manager(request)
 
         # 根据 run_id 和 model_name 获取对应的 processor
         processor = processor_manager.get_processor(run_id, actual_model)
@@ -150,30 +139,31 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
 
         # 根据是否流式选择处理方式
         if stream:
-            # 流式处理 - 使用 StreamingProcessor
-            streaming_processor = processor.streaming_processor
-            generator = StreamingResponseGenerator(
-                streaming_processor=streaming_processor,
-                messages=messages,
-                request_id=request_id,
-                session_id=session_id,
-                **request_params
-            )
+            # 流式处理 - 使用 Processor.process_stream
+            # 上下文容器，流式完成后用于后台存储
+            context_holder = {}
 
-            # 注册后台任务：流式结束后存储到数据库
-            async def save_stream_record():
-                ctx = generator.get_completed_context()
-                if ctx and streaming_processor.request_repository:
-                    try:
-                        await streaming_processor.request_repository.insert(ctx, streaming_processor.tokenizer_path)
-                        logger.info(f"[{ctx.unique_id}] 流式记录存储成功")
-                    except Exception as e:
-                        logger.error(f"[{ctx.unique_id}] 流式记录存储失败: {e}", exc_info=True)
+            async def generate_stream():
+                """流式生成器"""
+                async for chunk in processor.process_stream(
+                    messages=messages,
+                    request_id=request_id,
+                    session_id=session_id,
+                    context_holder=context_holder,
+                    **request_params
+                ):
+                    # chunk 可能是 dict（OpenAI 格式），需要序列化为 SSE 格式
+                    if isinstance(chunk, dict):
+                        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+                    else:
+                        yield chunk
+                # SSE 流结束标记
+                yield "data: [DONE]\n\n"
 
-            background_tasks.add_task(save_stream_record)
+            # 注意：存储已在 processor._finalize_stream() 中完成，无需后台任务
 
             return StreamingResponse(
-                generator.generate(),
+                generate_stream(),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -201,7 +191,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail="内部服务错误，请查看日志获取详细信息")
 
 
-# ========== 管理接口 ==========
+# ========== 模型管理接口 ==========
 
 @model_router.post("/register", response_model=RegisterModelResponse)
 async def register_model(request: Request, req: RegisterModelRequest):
@@ -216,7 +206,7 @@ async def register_model(request: Request, req: RegisterModelRequest):
         注册结果
     """
     try:
-        processor_manager = _get_processor_manager(request)
+        processor_manager = get_processor_manager(request)
 
         # 场景一：run_id 为空，赋默认值 DEFAULT
         # 场景二：run_id 不为空，直接使用
@@ -278,7 +268,7 @@ async def delete_model(request: Request, model_name: str, run_id: str = ""):
         删除结果
     """
     try:
-        processor_manager = _get_processor_manager(request)
+        processor_manager = get_processor_manager(request)
 
         # 场景一：run_id 为空，赋默认值 DEFAULT
         # 场景二：run_id 不为空，直接使用
@@ -322,7 +312,7 @@ async def list_models_admin(request: Request):
         所有模型的详细信息列表
     """
     try:
-        processor_manager = _get_processor_manager(request)
+        processor_manager = get_processor_manager(request)
         models_info = processor_manager.get_all_processors_info()
 
         return {
@@ -336,7 +326,8 @@ async def list_models_admin(request: Request):
         raise HTTPException(status_code=500, detail=f"列出模型失败: {str(e)}")
 
 
-# OpenAI 兼容的模型列表路由
+# ========== OpenAI 兼容接口 ==========
+
 @chat_router.get("/models")
 async def list_models_openai(request: Request):
     """
@@ -346,7 +337,7 @@ async def list_models_openai(request: Request):
         OpenAI 格式的模型列表: {"object": "list", "data": [...]}
     """
     try:
-        processor_manager = _get_processor_manager(request)
+        processor_manager = get_processor_manager(request)
         models_info = processor_manager.get_all_processors_info()
 
         # 转换为 OpenAI 格式
@@ -369,3 +360,40 @@ async def list_models_openai(request: Request):
     except Exception as e:
         logger.error(f"列出模型异常: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"列出模型失败: {str(e)}")
+
+
+# ========== 轨迹查询接口 ==========
+
+@transcript_router.get("/trajectory")
+async def get_trajectory(
+    request: Request,
+    session_id: str,
+    limit: int = 10000
+) -> Dict[str, Any]:
+    """
+    根据 session_id 获取所有轨迹记录
+
+    参数:
+        request: FastAPI Request 对象
+        session_id: 会话ID (格式: app_id,sample_id,task_id)
+        limit: 最多返回的记录数，默认为10000
+
+    返回:
+        包含session_id、记录数量和记录列表的字典
+
+    Raises:
+        HTTPException: 当查询失败时抛出
+    """
+    from traj_proxy.workers.worker import get_transcript_provider as get_provider
+
+    # 校验 session_id
+    valid, msg = validate_session_id(session_id)
+    if not valid:
+        raise HTTPException(status_code=422, detail=msg)
+
+    try:
+        provider = get_provider(request)
+        return await provider.get_trajectory(session_id, limit)
+    except Exception as e:
+        logger.exception(f"轨迹查询失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="轨迹查询失败，请稍后重试")

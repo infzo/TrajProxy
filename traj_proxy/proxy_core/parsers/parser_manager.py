@@ -6,7 +6,7 @@ Parser 管理器
 
 统一管理 Tool Parser 和 Reasoning Parser 的创建和获取。
 """
-from typing import Optional, Tuple, List, Any
+from typing import Optional, Tuple, List, Any, Sequence
 
 # 确保 vllm 兼容层初始化
 from traj_proxy.proxy_core.parsers.vllm_compat import ensure_initialized
@@ -20,6 +20,136 @@ from vllm.reasoning.abs_reasoning_parsers import (
     ReasoningParser,
     ReasoningParserManager,
 )
+from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
+from vllm.entrypoints.openai.engine.protocol import (
+    DeltaMessage,
+    ExtractedToolCallInformation,
+)
+
+
+class Parser:
+    """Parser 统一接口（适配器模式）
+
+    对外提供统一接口，对内适配 vLLM parser。
+    支持 vLLM 原始 parser 无需修改即可使用。
+
+    使用示例：
+        parser = ParserManager.create_parser(...)
+        with parser:  # 自动重置流式状态
+            async for chunk in ...:
+                delta = parser.extract_tool_calls_streaming(...)
+    """
+
+    def __init__(
+        self,
+        tool_parser: Optional[ToolParser],
+        reasoning_parser: Optional[ReasoningParser],
+    ):
+        self._tool_parser = tool_parser
+        self._reasoning_parser = reasoning_parser
+
+    # ==================== 流式状态管理 ====================
+
+    def reset_streaming_state(self):
+        """重置流式解析状态（兼容 vLLM 原始 parser）"""
+        # 使用 hasattr 检查，适配不同的 vLLM parser 实现
+        if self._tool_parser and hasattr(self._tool_parser, 'reset_streaming_state'):
+            self._tool_parser.reset_streaming_state()
+        if self._reasoning_parser and hasattr(self._reasoning_parser, 'reset_streaming_state'):
+            self._reasoning_parser.reset_streaming_state()
+
+    def __enter__(self):
+        """进入上下文管理器，自动重置流式状态"""
+        self.reset_streaming_state()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """退出上下文管理器"""
+        return False
+
+    # ==================== Tool Parser 接口 ====================
+
+    def extract_tool_calls(
+        self,
+        model_output: str,
+        request: ChatCompletionRequest,
+    ) -> ExtractedToolCallInformation:
+        """提取工具调用（非流式）"""
+        if not self._tool_parser:
+            return ExtractedToolCallInformation(
+                tools_called=False,
+                tool_calls=[],
+                content=model_output
+            )
+        return self._tool_parser.extract_tool_calls(model_output, request)
+
+    def extract_tool_calls_streaming(
+        self,
+        previous_text: str,
+        current_text: str,
+        delta_text: str,
+        previous_token_ids: Sequence[int],
+        current_token_ids: Sequence[int],
+        delta_token_ids: Sequence[int],
+        request: ChatCompletionRequest,
+    ) -> DeltaMessage | None:
+        """提取工具调用（流式）"""
+        if not self._tool_parser:
+            return None
+        return self._tool_parser.extract_tool_calls_streaming(
+            previous_text=previous_text,
+            current_text=current_text,
+            delta_text=delta_text,
+            previous_token_ids=previous_token_ids,
+            current_token_ids=current_token_ids,
+            delta_token_ids=delta_token_ids,
+            request=request,
+        )
+
+    # ==================== Reasoning Parser 接口 ====================
+
+    def extract_reasoning_streaming(
+        self,
+        previous_text: str,
+        current_text: str,
+        delta_text: str,
+        previous_token_ids: Sequence[int],
+        current_token_ids: Sequence[int],
+        delta_token_ids: Sequence[int],
+    ) -> DeltaMessage | None:
+        """提取推理内容（流式）"""
+        if not self._reasoning_parser:
+            return None
+        return self._reasoning_parser.extract_reasoning_streaming(
+            previous_text=previous_text,
+            current_text=current_text,
+            delta_text=delta_text,
+            previous_token_ids=previous_token_ids,
+            current_token_ids=current_token_ids,
+            delta_token_ids=delta_token_ids,
+        )
+
+    # ==================== 属性访问 ====================
+
+    @property
+    def has_tool_parser(self) -> bool:
+        """是否有 Tool Parser"""
+        return self._tool_parser is not None
+
+    @property
+    def has_reasoning_parser(self) -> bool:
+        """是否有 Reasoning Parser"""
+        return self._reasoning_parser is not None
+
+    @property
+    def tool_parser(self) -> Optional[ToolParser]:
+        """获取底层 Tool Parser（高级用法）"""
+        return self._tool_parser
+
+    @property
+    def reasoning_parser(self) -> Optional[ReasoningParser]:
+        """获取底层 Reasoning Parser（高级用法）"""
+        return self._reasoning_parser
 
 
 class ParserManager:
@@ -40,13 +170,13 @@ class ParserManager:
     """
 
     @classmethod
-    def create_parsers(
+    def create_parser(
         cls,
         tool_parser_name: Optional[str],
         reasoning_parser_name: Optional[str],
         tokenizer: Any,
-    ) -> Tuple[Optional[ToolParser], Optional[ReasoningParser]]:
-        """创建 Parser 实例
+    ) -> Parser:
+        """创建 Parser 实例（统一接口）
 
         Args:
             tool_parser_name: Tool Parser 名称（None 或空字符串表示不使用）
@@ -54,7 +184,7 @@ class ParserManager:
             tokenizer: Tokenizer 实例（transformers.PreTrainedTokenizerBase）
 
         Returns:
-            (tool_parser, reasoning_parser) 元组
+            Parser 实例（统一接口，适配 vLLM parser）
         """
         # 确保兼容层已初始化（自动发现和注册）
         ensure_initialized()
@@ -72,7 +202,29 @@ class ParserManager:
             if parser_cls:
                 reasoning_parser = parser_cls(tokenizer=tokenizer)
 
-        return tool_parser, reasoning_parser
+        return Parser(tool_parser, reasoning_parser)
+
+    @classmethod
+    def create_parsers(
+        cls,
+        tool_parser_name: Optional[str],
+        reasoning_parser_name: Optional[str],
+        tokenizer: Any,
+    ) -> Tuple[Optional[ToolParser], Optional[ReasoningParser]]:
+        """创建原始 vLLM Parser 实例（向后兼容）
+
+        注意：推荐使用 create_parser() 获取统一的 Parser 接口。
+
+        Args:
+            tool_parser_name: Tool Parser 名称
+            reasoning_parser_name: Reasoning Parser 名称
+            tokenizer: Tokenizer 实例
+
+        Returns:
+            (tool_parser, reasoning_parser) 元组
+        """
+        parser = cls.create_parser(tool_parser_name, reasoning_parser_name, tokenizer)
+        return parser.tool_parser, parser.reasoning_parser
 
     @classmethod
     def get_tool_parser_cls(cls, name: str) -> Optional[type]:
@@ -154,6 +306,7 @@ class ParserManager:
 # 便捷函数
 get_tool_parser = ParserManager.get_tool_parser_cls
 get_reasoning_parser = ParserManager.get_reasoning_parser_cls
+create_parser = ParserManager.create_parser
 create_tool_parser = ParserManager.create_tool_parser
 create_reasoning_parser = ParserManager.create_reasoning_parser
 list_tool_parsers = ParserManager.list_tool_parsers
@@ -161,6 +314,7 @@ list_reasoning_parsers = ParserManager.list_reasoning_parsers
 
 
 __all__ = [
+    "Parser",
     "ParserManager",
     "ToolParser",
     "ReasoningParser",
@@ -168,6 +322,7 @@ __all__ = [
     "ReasoningParserManager",
     "get_tool_parser",
     "get_reasoning_parser",
+    "create_parser",
     "create_tool_parser",
     "create_reasoning_parser",
     "list_tool_parsers",
