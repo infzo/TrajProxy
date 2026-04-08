@@ -1,7 +1,7 @@
 ## 常用命令
 
 ```shell
-docker build --platform linux/amd64 -t traj-proxy-x86:0.0.6 -f dockers/Dockerfile .
+docker build --platform linux/amd64 -t traj-proxy-x86:0.0.9 -f dockers/Dockerfile .
 docker build -f dockers/Dockerfile .
 
 ## 查询模型

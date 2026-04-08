@@ -5,10 +5,12 @@ TrajProxy 是一个 LLM 请求代理系统，提供 OpenAI 兼容 API、Token-in
 ## 特性
 
 - **OpenAI 兼容 API** - 无缝对接现有客户端
-- **Token-in-Token-out 模式** - 支持前缀匹配缓存
-- **动态模型管理** - 运行时注册/删除模型
+- **双模式处理** - 直接转发模式（轻量代理）和 Token-in-Token-out 模式（支持前缀匹配缓存）
+- **动态模型管理** - 运行时注册/删除模型，跨 Worker 自动同步
 - **请求轨迹记录** - 完整的对话历史存储
 - **多 Worker 架构** - Ray 分布式处理，高并发支持
+- **工具调用解析** - 支持 DeepSeek、Qwen 等多种格式的工具调用解析
+- **推理内容解析** - 支持思维链内容提取
 
 ## 部署视图
 
@@ -99,16 +101,16 @@ flowchart LR
         direction TB
         PW --> PRoute{内部路由}
 
-        PRoute -->|聊天请求| PC[ProcessorManager<br/>LLM推理]
+        PRoute -->|聊天请求| PM[ProcessorManager]
         PRoute -->|轨迹查询| TP[TranscriptProvider<br/>历史查询]
 
         subgraph "推理流程"
-            PC --> PB[构建Prompt]
-            PB --> MODE{处理模式}
-            MODE -->|Text模式| PC_Text[发送文本到Infer]
-            MODE -->|Token模式| PC_Token[前缀匹配编码<br/>发送Token到Infer]
-            PC_Text --> Infer[Infer服务]
-            PC_Token --> Infer
+            PM --> Proc[Processor]
+            Proc --> Pipeline{Pipeline选择}
+            Pipeline -->|直接转发| Direct[DirectPipeline<br/>直接转发到Infer<br/>无需Parser]
+            Pipeline -->|Token模式| Token[TokenPipeline<br/>前缀匹配缓存<br/>Parser解析]
+            Direct --> Infer[Infer服务]
+            Token --> Infer
             Infer --> Response[接收响应]
             Response --> Build[构建OpenAI响应]
             Build --> Save[存储轨迹到DB]
@@ -128,7 +130,8 @@ flowchart LR
     style Nginx fill:#fff9c4
     style LiteLLM fill:#c8e6c9
     style PW fill:#ffcc80
-    style PC fill:#ffe0b2
+    style PM fill:#ffe0b2
+    style Proc fill:#ffe0b2
     style TP fill:#ffe0b2
     style Infer fill:#f8d7da
     style DB fill:#d1ecf1
@@ -208,10 +211,11 @@ TrajProxy/
 
 | 文档 | 说明 |
 |------|------|
-| [架构设计](docs/architecture.md) | 系统架构、核心组件、处理流程 |
+| [架构设计](docs/architecture.md) | Pipeline 架构、核心组件、处理流程 |
 | [API 参考](docs/api_reference.md) | 完整的 API 接口文档 |
 | [配置详解](docs/configuration.md) | 配置文件说明、环境变量 |
-| [数据库设计](docs/database.md) | 表结构、索引、同步机制 |
+| [数据库设计](docs/database.md) | 表结构、数据模型、同步机制 |
+| [Parser 文档](docs/parser.md) | 工具调用和推理内容解析 |
 | [部署指南](docs/deployment.md) | 本地开发、Docker 部署 |
 | [开发指南](docs/development.md) | 开发环境、测试运行 |
 

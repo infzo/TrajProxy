@@ -86,7 +86,8 @@ log_curl_cmd "curl -s -w '\n%{http_code}' \\
     -d '{
         \"model\": \"${REASONING_TEST_MODEL_NAME}\",
         \"messages\": [{\"role\": \"user\", \"content\": \"Output exactly: <think>Let me think about this step by step.\\nFirst, I need to analyze the problem.\\nSecond, I will provide a solution.\\n</think>The answer is 42.\"}],
-        \"stream\": false
+        \"stream\": false,
+        \"max_tokens\": 1024
     }'"
 log_separator
 
@@ -96,7 +97,8 @@ CHAT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${REASONING_TEST_BASE_URL}/
     -d "{
         \"model\": \"${REASONING_TEST_MODEL_NAME}\",
         \"messages\": [{\"role\": \"user\", \"content\": \"Output exactly: <think>Let me think about this step by step.\\nFirst, I need to analyze the problem.\\nSecond, I will provide a solution.\\n</think>The answer is 42.\"}],
-        \"stream\": false
+        \"stream\": false,
+        \"max_tokens\": 1024
     }")
 
 CHAT_BODY=$(echo "$CHAT_RESPONSE" | sed '$d')
