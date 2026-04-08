@@ -388,16 +388,10 @@ class TokenPipeline(BasePipeline):
                 chunk_token_ids, context
             )
 
-        # 累积响应
+        # 注意：decode_streaming() 已经更新了 stream_buffer_ids 和 stream_buffer_text
+        # 这里不能重复追加，否则会导致数据翻倍、工具解析失败
         current_text = context.stream_buffer_text
-        if chunk_content:
-            context.stream_buffer_text += chunk_content
-            current_text = context.stream_buffer_text
-
-        current_token_ids = context.stream_buffer_ids.copy()
-        if chunk_token_ids:
-            context.stream_buffer_ids.extend(chunk_token_ids)
-            current_token_ids = context.stream_buffer_ids
+        current_token_ids = context.stream_buffer_ids
 
         delta_token_ids = chunk_token_ids or []
 
