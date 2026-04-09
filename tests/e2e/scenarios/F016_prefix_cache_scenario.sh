@@ -103,7 +103,7 @@ assert_contains "$ROUND1_BODY" "choices" "第1轮响应应包含 choices 字段"
 ROUND1_ASSISTANT_CONTENT=$(echo "$ROUND1_BODY" | python3 -c "
 import sys, json
 data = json.loads(sys.stdin.read())
-print(json.dumps(data['choices'][0]['message']['content'], ensure_ascii=False))
+print(data['choices'][0]['message']['content'])
 " 2>/dev/null)
 
 if [ -n "$ROUND1_ASSISTANT_CONTENT" ]; then
@@ -119,24 +119,17 @@ echo ""
 
 log_step "步骤 3: 第2轮对话（应复用第1轮缓存）"
 
-# 构造第2轮 messages（使用 heredoc 避免 shell 转义问题）
-ROUND2_MESSAGES=$(python3 << 'PYEOF' 2>/dev/null
-import json
-import sys
-
-try:
-    round1_assistant = json.loads(sys.argv[1])
-    messages = [
-        {'role': 'user', 'content': '你好'},
-        {'role': 'assistant', 'content': round1_assistant},
-        {'role': 'user', 'content': '今天天气怎么样'}
-    ]
-    print(json.dumps(messages, ensure_ascii=False))
-except Exception as e:
-    print("", end="")
-    sys.exit(1)
-PYEOF
-"${ROUND1_ASSISTANT_CONTENT}")
+# 构造第2轮 messages（使用环境变量传递数据避免 shell 引号问题）
+ROUND2_MESSAGES=$(ROUND1_CONTENT="$ROUND1_ASSISTANT_CONTENT" python3 -c "
+import json, os
+round1 = os.environ['ROUND1_CONTENT']
+messages = [
+    {'role': 'user', 'content': '你好'},
+    {'role': 'assistant', 'content': round1},
+    {'role': 'user', 'content': '今天天气怎么样'}
+]
+print(json.dumps(messages, ensure_ascii=False))
+" 2>/dev/null)
 
 if [ -z "$ROUND2_MESSAGES" ]; then
     log_error "构造第2轮 messages 失败"
@@ -178,7 +171,7 @@ assert_contains "$ROUND2_BODY" "choices" "第2轮响应应包含 choices 字段"
 ROUND2_ASSISTANT_CONTENT=$(echo "$ROUND2_BODY" | python3 -c "
 import sys, json
 data = json.loads(sys.stdin.read())
-print(json.dumps(data['choices'][0]['message']['content'], ensure_ascii=False))
+print(data['choices'][0]['message']['content'])
 " 2>/dev/null)
 
 if [ -n "$ROUND2_ASSISTANT_CONTENT" ]; then
@@ -194,28 +187,20 @@ echo ""
 
 log_step "步骤 4: 第3轮对话（应复用第2轮缓存）"
 
-# 构造第3轮 messages
-# 注意：需要正确处理 JSON 字符串中的特殊字符（换行、引号等）
-ROUND3_MESSAGES=$(python3 << 'PYEOF' 2>/dev/null
-import json
-import sys
-
-try:
-    round1_assistant = json.loads(sys.argv[1])
-    round2_assistant = json.loads(sys.argv[2])
-    messages = [
-        {'role': 'user', 'content': '你好'},
-        {'role': 'assistant', 'content': round1_assistant},
-        {'role': 'user', 'content': '今天天气怎么样'},
-        {'role': 'assistant', 'content': round2_assistant},
-        {'role': 'user', 'content': '谢谢'}
-    ]
-    print(json.dumps(messages, ensure_ascii=False))
-except Exception as e:
-    print("", end="")
-    sys.exit(1)
-PYEOF
-"${ROUND1_ASSISTANT_CONTENT}" "${ROUND2_ASSISTANT_CONTENT}")
+# 构造第3轮 messages（使用环境变量传递数据避免 shell 引号问题）
+ROUND3_MESSAGES=$(ROUND1_CONTENT="$ROUND1_ASSISTANT_CONTENT" ROUND2_CONTENT="$ROUND2_ASSISTANT_CONTENT" python3 -c "
+import json, os
+round1 = os.environ['ROUND1_CONTENT']
+round2 = os.environ['ROUND2_CONTENT']
+messages = [
+    {'role': 'user', 'content': '你好'},
+    {'role': 'assistant', 'content': round1},
+    {'role': 'user', 'content': '今天天气怎么样'},
+    {'role': 'assistant', 'content': round2},
+    {'role': 'user', 'content': '谢谢'}
+]
+print(json.dumps(messages, ensure_ascii=False))
+" 2>/dev/null)
 
 if [ -z "$ROUND3_MESSAGES" ]; then
     log_error "构造第3轮 messages 失败"
