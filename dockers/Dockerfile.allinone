@@ -1,0 +1,88 @@
+# TrajProxy All-in-One Dockerfile
+# 将 nginx + litellm + postgres + traj_proxy 打包为单一镜像
+# 适用于不支持 docker-compose 的部署环境
+
+FROM python:3.11-bookworm
+
+# ========================================
+# 系统依赖安装
+# ========================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    lsb-release \
+    supervisor \
+    nginx \
+    su-exec \
+    postgresql-16 \
+    postgresql-client-16 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ========================================
+# Python 依赖安装
+# ========================================
+WORKDIR /app
+
+# traj_proxy 依赖
+COPY requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# litellm 依赖（使用独立虚拟环境，避免依赖冲突）
+RUN python -m venv /opt/litellm-venv && \
+    /opt/litellm-venv/bin/pip install --no-cache-dir 'litellm[proxy]' -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# ========================================
+# 应用代码复制
+# ========================================
+COPY scripts/download_tokenizer.py ./download_tokenizer.py
+COPY scripts/entrypoint.sh ./scripts/entrypoint.sh
+COPY scripts/entrypoint_allinone.sh ./scripts/entrypoint_allinone.sh
+
+# models 目录
+RUN mkdir -p ./models
+COPY models/ ./models/
+
+# traj_proxy 包
+COPY traj_proxy/ ./traj_proxy/
+
+# ========================================
+# 配置文件（All-in-One 版本）
+# ========================================
+COPY configs/nginx_allinone.conf /etc/nginx/conf.d/default.conf
+COPY configs/litellm_allinone.yaml /app/configs/litellm_allinone.yaml
+COPY configs/config_allinone.yaml /app/configs/config_allinone.yaml
+COPY configs/supervisord.conf /etc/supervisor/conf.d/trajproxy.conf
+
+# ========================================
+# 运行时目录准备
+# ========================================
+RUN mkdir -p /run/postgresql \
+    /var/log/supervisor \
+    /app/logs \
+    /app/configs \
+    /data/postgres \
+    /data/archives \
+    && chown postgres:postgres /data/postgres /run/postgresql \
+    && chmod +x ./scripts/entrypoint_allinone.sh ./scripts/entrypoint.sh
+
+# 清除 nginx 默认配置，避免冲突
+RUN rm -f /etc/nginx/sites-enabled/default
+
+# ========================================
+# 端口和环境变量
+# ========================================
+# 对外仅暴露 nginx 端口
+EXPOSE 12345
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app:$PYTHONPATH
+ENV PGDATA=/data/postgres
+ENV TRAJ_PROXY_CONFIG=/app/configs/config_allinone.yaml
+
+# 数据持久化卷
+VOLUME ["/data/postgres", "/app/logs", "/app/models"]
+
+# ========================================
+# 入口
+# ========================================
+CMD ["./scripts/entrypoint_allinone.sh"]
