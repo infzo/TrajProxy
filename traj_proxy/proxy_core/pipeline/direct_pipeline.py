@@ -195,6 +195,17 @@ class DirectPipeline(BasePipeline):
             context: 处理上下文
             chunk: 流式响应块
         """
+        # 先处理 usage 信息（可能在没有 choices 的单独 chunk 中）
+        # vLLM 在流式结束时发送一个只包含 usage 的 chunk
+        if "usage" in chunk:
+            usage = chunk["usage"]
+            if usage.get("prompt_tokens") is not None:
+                context.prompt_tokens = usage["prompt_tokens"]
+            if usage.get("completion_tokens") is not None:
+                context.completion_tokens = usage["completion_tokens"]
+            if usage.get("total_tokens") is not None:
+                context.total_tokens = usage["total_tokens"]
+
         if "choices" not in chunk or not chunk["choices"]:
             return
 
@@ -246,10 +257,6 @@ class DirectPipeline(BasePipeline):
         if finish_reason:
             context.stream_finished = True
             context.stream_finish_reason = finish_reason
-            if "usage" in chunk:
-                context.prompt_tokens = chunk["usage"].get("prompt_tokens", 0)
-                context.completion_tokens = chunk["usage"].get("completion_tokens", 0)
-                context.total_tokens = chunk["usage"].get("total_tokens", 0)
 
     async def _finalize_stream(self, context: ProcessContext):
         """完成流式处理
@@ -261,7 +268,7 @@ class DirectPipeline(BasePipeline):
         self._update_timing(context)
 
         # 如果后端服务未返回 usage 信息，估算 token 数量
-        if context.completion_tokens == 0 and context.response_text:
+        if not context.completion_tokens and context.response_text:
             # 估算：假设平均每 4 个字符约 1 个 token
             context.completion_tokens = len(context.response_text) // 4
             context.total_tokens = (context.prompt_tokens or 0) + context.completion_tokens

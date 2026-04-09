@@ -124,6 +124,7 @@ TrajProxy/
 │   ├── start_local.sh              # 本地启动脚本
 │   ├── start_docker.sh             # Docker 启动脚本
 │   ├── init_db.py                  # 数据库初始化
+│   ├── archive_records.py          # 详情数据归档脚本
 │   └── download_tokenizer.py       # Tokenizer 下载
 │
 ├── dockers/                        # Docker 相关
@@ -251,11 +252,26 @@ logger.setLevel("DEBUG")
 # 连接数据库
 psql -h localhost -U llmproxy -d traj_proxy
 
-# 查看最近的请求记录
-SELECT * FROM request_records ORDER BY start_time DESC LIMIT 10;
+# 查看最近的请求记录（活跃数据）
+SELECT m.unique_id, m.model, m.start_time, m.total_tokens,
+       d.prompt_text, d.response_text
+FROM request_metadata m
+JOIN request_details_active d ON m.unique_id = d.unique_id
+WHERE m.archive_location IS NULL
+ORDER BY m.start_time DESC LIMIT 10;
+
+# 查看会话元数据（含活跃+已归档）
+SELECT unique_id, model, start_time, total_tokens, archive_location
+FROM request_metadata
+ORDER BY start_time DESC LIMIT 10;
 
 # 查看已注册模型
 SELECT * FROM model_registry;
+
+# 查看详情分区
+SELECT relname FROM pg_class
+WHERE relname LIKE 'request_details_active_%'
+  AND relnamespace = 'public'::regnamespace;
 ```
 
 ### 单独测试组件

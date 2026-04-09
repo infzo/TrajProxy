@@ -55,6 +55,13 @@ processor_manager:
   sync_retry_delay: 5           # 同步重试初始延迟（秒）
   listen_reconnect_delay: 5     # LISTEN 连接重连初始延迟（秒）
   listen_max_reconnect_delay: 60  # LISTEN 连接重连最大延迟（秒）
+
+# 归档配置
+archive:
+  enabled: false                 # 启用自动归档
+  retention_days: 30             # 活跃详情保留天数
+  storage_path: "/data/archives" # JSONL+GZIP 归档文件目录
+  batch_size: 1000               # 每批处理的记录数
 ```
 
 ---
@@ -144,6 +151,19 @@ database:
 
 ---
 
+### archive
+
+归档配置，控制过期详情数据的归档行为。详情见 [database.md](database.md) 中的归档机制。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enabled` | bool | false | 是否启用自动归档 |
+| `retention_days` | int | 30 | 活跃详情保留天数 |
+| `storage_path` | string | "/data/archives" | JSONL+GZIP 归档文件目录 |
+| `batch_size` | int | 1000 | 每批处理的记录数 |
+
+---
+
 ### processor_manager
 
 ProcessorManager 同步配置，控制模型配置的跨 Worker 同步。
@@ -227,9 +247,11 @@ from traj_proxy.utils.config import (
     get_database_pool_config,
     get_ray_config,
     get_processor_manager_config,
+    get_archive_config,
 )
 
 proxy_config = get_proxy_workers_config()
 db_config = get_database_config()
 pool_config = get_database_pool_config()
+archive_config = get_archive_config()
 ```

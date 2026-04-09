@@ -443,13 +443,21 @@ class ProcessContext:
 
 ### 9.3 数据库存储
 
-| 字段 | Token-in-Token-out 模式 | 直接转发模式 |
-|------|------------------------|--------------|
-| tokenizer_path | 必填 | 空 |
-| prompt_text | 填充 | 空 |
-| token_ids | 填充 | 空 |
-| response | OpenAI Response | OpenAI Response |
-| messages | 原始消息 | 原始消息 |
+请求轨迹采用元数据+详情分离架构：
+
+- **request_metadata**：长期保留统计信息（session_id, model, tokens, duration 等）
+- **request_details_active**：近期详情大字段（messages, raw_request/response 等），按月分区
+- **外部存储**：过期详情归档为 JSONL+GZIP 文件
+
+| 字段 | Token-in-Token-out 模式 | 直接转发模式 | 存储位置 |
+|------|------------------------|--------------|----------|
+| tokenizer_path | 必填 | 空 | details |
+| prompt_text | 填充 | 空 | details |
+| token_ids | 填充 | 空 | details |
+| response | OpenAI Response | OpenAI Response | details |
+| messages | 原始消息 | 原始消息 | details |
+| prompt_tokens | 填充 | 填充 | metadata |
+| cache_hit_tokens | 填充 | 填充 | metadata |
 
 ---
 

@@ -32,7 +32,9 @@ def validate_session_id(session_id: Optional[str]) -> Tuple[bool, str]:
     """
     校验 session_id 格式
 
-    session_id 格式为 {run_id},{sample_id},{task_id}
+    支持两种格式：
+    - 三段逗号格式：{run_id},{sample_id},{task_id}
+    - 简单字符串/UUID（不含逗号的非空字符串）
 
     Args:
         session_id: 会话ID
@@ -43,10 +45,15 @@ def validate_session_id(session_id: Optional[str]) -> Tuple[bool, str]:
     if session_id is None or session_id == "":
         return True, ""
 
+    # 简单字符串/UUID格式（不含逗号）
+    if ',' not in session_id:
+        return True, ""
+
+    # 三段逗号格式
     if SESSION_ID_PATTERN.match(session_id):
         return True, ""
 
-    return False, f"session_id 格式无效: '{session_id}'，期望格式为 {{run_id}},{{sample_id}},{{task_id}}"
+    return False, f"session_id 格式无效: '{session_id}'，期望格式为 {{run_id}},{{sample_id}},{{task_id}} 或简单字符串"
 
 
 def validate_run_id(run_id: str) -> Tuple[bool, str]:

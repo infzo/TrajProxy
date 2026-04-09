@@ -147,3 +147,18 @@ def get_models_dir() -> str:
     """
     models_dir = get_config().get("models_dir", "/app/models")
     return os.path.abspath(models_dir)
+
+
+def get_archive_config() -> Dict:
+    """
+    获取归档配置
+
+    返回:
+        archive 配置字典，包含 enabled, retention_days, storage_path, batch_size
+    """
+    return get_config().get("archive", {
+        "enabled": False,
+        "retention_days": 30,
+        "storage_path": "/data/archives",
+        "batch_size": 1000,
+    })

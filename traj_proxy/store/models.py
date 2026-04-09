@@ -78,3 +78,7 @@ class RequestRecord:
 
     # 创建时间
     created_at: Optional[datetime] = None
+
+    # 归档追踪（元数据表 + 详情表架构）
+    archive_location: Optional[str] = None      # NULL=活跃详情表, 非空=已归档到外部文件
+    archived_at: Optional[datetime] = None

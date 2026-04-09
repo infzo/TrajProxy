@@ -21,8 +21,9 @@ logger = get_logger(__name__)
 class DatabaseManager:
     """数据库管理器 - 处理连接池
 
-    使用 PostgreSQL 存储数据，管理两个表：
-    - request_records: 请求轨迹记录
+    使用 PostgreSQL 存储数据，管理三个表：
+    - request_metadata: 请求轨迹元数据（长期保留）
+    - request_details_active: 请求轨迹详情（近期大字段）
     - model_registry: 模型配置注册表
     """
 

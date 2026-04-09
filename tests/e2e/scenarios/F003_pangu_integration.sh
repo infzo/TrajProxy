@@ -1,6 +1,6 @@
 #!/bin/bash
 # 场景 003: PANGU集成场景
-# 测试流程：12300端口注册带run-id模型 -> 发送非流式推理请求到12300 -> 删除模型
+# 测试流程：12300端口注册带run-id模型 -> 发送非流式推理请求 -> 发送流式推理请求 -> 删除模型
 # 特点：model参数格式为 {model_name},{run_id}
 
 # 获取脚本目录
@@ -98,8 +98,52 @@ assert_contains "$CHAT_BODY" "choices" "响应应包含 choices 字段"
 
 echo ""
 
-# 步骤 3: 在12300端口删除模型
-log_step "步骤 3: 在12300端口删除模型（run_id: ${PANGU_TEST_RUN_ID}）"
+# 步骤 3: 发送流式推理请求到12300端口（model参数格式: {model_name},{run_id}）
+log_step "步骤 3: 发送流式推理请求到12300端口（model: ${PANGU_TEST_MODEL_PARAM}）"
+log_curl_cmd "curl -s --no-buffer \\
+    -X POST '${PANGU_TEST_CHAT_URL}/v1/chat/completions' \\
+    -H 'Content-Type: application/json' \\
+    -H 'Authorization: Bearer ${CHAT_API_KEY}' \\
+    -d '{
+        \"model\": \"${PANGU_TEST_MODEL_PARAM}\",
+        \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],
+        \"stream\": true
+    }'"
+log_separator
+
+# 发送流式请求并收集完整响应
+STREAM_RESPONSE=$(curl -s --no-buffer -X POST "${PANGU_TEST_CHAT_URL}/v1/chat/completions" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${CHAT_API_KEY}" \
+    -d "{
+        \"model\": \"${PANGU_TEST_MODEL_PARAM}\",
+        \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],
+        \"stream\": true
+    }")
+
+log_response "流式响应内容:"
+echo "$STREAM_RESPONSE"
+log_separator
+
+# 验证流式响应格式
+assert_contains "$STREAM_RESPONSE" "data:" "流式响应应包含 data: 前缀"
+assert_contains "$STREAM_RESPONSE" "choices" "流式响应应包含 choices 字段"
+assert_contains "$STREAM_RESPONSE" "[DONE]" "流式响应应以 [DONE] 结束"
+
+# 统计 chunk 数量
+CHUNK_COUNT=$(echo "$STREAM_RESPONSE" | grep -c "^data: {" || true)
+log_info "收到 ${CHUNK_COUNT} 个数据块"
+
+if [ "$CHUNK_COUNT" -gt 0 ]; then
+    log_success "流式响应包含多个数据块"
+else
+    log_error "流式响应未包含有效数据块"
+fi
+
+echo ""
+
+# 步骤 4: 在12300端口删除模型
+log_step "步骤 4: 在12300端口删除模型（run_id: ${PANGU_TEST_RUN_ID}）"
 log_curl_cmd "curl -s -w '\n%{http_code}' \\
     -X DELETE '${PANGU_TEST_REGISTER_URL}/models?model_name=${PANGU_TEST_MODEL_NAME}&run_id=${PANGU_TEST_RUN_ID}'"
 log_separator

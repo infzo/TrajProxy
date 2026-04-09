@@ -72,19 +72,58 @@ def init_database():
     print("创建表和索引...")
     try:
         with psycopg.connect(db_url, autocommit=True) as conn:
-            # request_records 表
-            print("  创建 request_records 表...")
+            # request_metadata 表（元数据，长期保留）
+            print("  创建 request_metadata 表...")
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS public.request_records (
-                    id SERIAL PRIMARY KEY,
+                CREATE TABLE IF NOT EXISTS public.request_metadata (
+                    id BIGSERIAL PRIMARY KEY,
                     unique_id TEXT NOT NULL UNIQUE,
                     request_id TEXT NOT NULL,
                     session_id TEXT NOT NULL,
                     model TEXT NOT NULL,
-                    tokenizer_path TEXT NOT NULL,
-                    messages JSONB NOT NULL,
+
+                    -- 统计信息（长期保留）
+                    prompt_tokens INTEGER,
+                    completion_tokens INTEGER,
+                    total_tokens INTEGER,
+                    cache_hit_tokens INTEGER DEFAULT 0,
+                    processing_duration_ms FLOAT,
+
+                    -- 时间字段
+                    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                    end_time TIMESTAMP WITH TIME ZONE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+                    -- 错误信息
+                    error TEXT,
+
+                    -- 归档追踪（NULL = 活跃, 非空 = 已归档到外部文件）
+                    archive_location TEXT,
+                    archived_at TIMESTAMP WITH TIME ZONE
+                )
+            """)
+            print("  request_metadata 表创建完成")
+
+            # request_metadata 索引
+            print("  创建 request_metadata 索引...")
+            conn.execute("CREATE INDEX IF NOT EXISTS request_metadata_session_id_idx ON public.request_metadata (session_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS request_metadata_start_time_idx ON public.request_metadata (start_time DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS request_metadata_archive_location_idx ON public.request_metadata (archive_location) WHERE archive_location IS NOT NULL")
+
+            # request_details_active 表（详情大字段，按月分区，只存近期）
+            print("  创建 request_details_active 分区表...")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS public.request_details_active (
+                    id BIGSERIAL,
+                    unique_id TEXT NOT NULL
+                        REFERENCES public.request_metadata(unique_id) ON DELETE CASCADE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+                    -- Tokenizer
+                    tokenizer_path TEXT,
 
                     -- 阶段1: OpenAI Chat 格式
+                    messages JSONB NOT NULL,
                     raw_request JSONB,
                     raw_response JSONB,
 
@@ -106,32 +145,41 @@ def init_database():
                     full_conversation_text TEXT,
                     full_conversation_token_ids INTEGER[],
 
-                    -- 元数据
-                    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-                    end_time TIMESTAMP WITH TIME ZONE,
-                    processing_duration_ms FLOAT,
-
-                    -- 统计信息
-                    prompt_tokens INTEGER,
-                    completion_tokens INTEGER,
-                    total_tokens INTEGER,
-                    cache_hit_tokens INTEGER DEFAULT 0,
-
-                    -- 错误信息
-                    error TEXT,
+                    -- 错误详情
                     error_traceback TEXT,
 
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
+                    PRIMARY KEY (id, created_at)
+                ) PARTITION BY RANGE (created_at)
             """)
-            print("  request_records 表创建完成")
+            print("  request_details_active 分区表创建完成")
 
-            # request_records 索引
-            print("  创建 request_records 索引...")
-            conn.execute("CREATE INDEX IF NOT EXISTS request_records_session_id_idx ON public.request_records (session_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS request_records_request_id_idx ON public.request_records (request_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS request_records_unique_id_idx ON public.request_records (unique_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS request_records_start_time_idx ON public.request_records (start_time DESC)")
+            # 创建当月分区
+            import datetime as _dt
+            _now = _dt.datetime.now()
+            _month_start = _now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if _now.month == 12:
+                _next_month = _month_start.replace(year=_now.year + 1, month=1)
+            else:
+                _next_month = _month_start.replace(month=_now.month + 1)
+            _partition_name = f"request_details_active_{_now.strftime('%Y_%m')}"
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS public.{_partition_name}
+                    PARTITION OF public.request_details_active
+                    FOR VALUES FROM ('{_month_start.isoformat()}') TO ('{_next_month.isoformat()}')
+            """)
+            print(f"  创建当月分区: {_partition_name}")
+
+            # 创建默认分区（兜底：防止无对应月分区时 INSERT 失败）
+            print("  创建默认分区...")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS public.request_details_active_default
+                    PARTITION OF public.request_details_active DEFAULT
+            """)
+            print("  默认分区创建完成")
+
+            # request_details_active 索引
+            print("  创建 request_details_active 索引...")
+            conn.execute("CREATE INDEX IF NOT EXISTS request_details_active_unique_id_idx ON public.request_details_active (unique_id)")
 
             # model_registry 表
             print("  创建 model_registry 表...")
@@ -157,29 +205,6 @@ def init_database():
             conn.execute("CREATE INDEX IF NOT EXISTS model_registry_run_id_idx ON public.model_registry (run_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS model_registry_model_name_idx ON public.model_registry (model_name)")
             conn.execute("CREATE INDEX IF NOT EXISTS model_registry_updated_at_idx ON public.model_registry (updated_at DESC)")
-
-            # 兼容性：删除旧列（如果存在）
-            print("  检查 request_records 表列兼容性...")
-            conn.execute("""
-                DO $$
-                BEGIN
-                    -- 删除旧的 response 列
-                    IF EXISTS (SELECT 1 FROM information_schema.columns
-                               WHERE table_schema='public' AND table_name='request_records' AND column_name='response') THEN
-                        ALTER TABLE public.request_records DROP COLUMN response;
-                    END IF;
-                    -- 删除旧的 infer_request_body 列
-                    IF EXISTS (SELECT 1 FROM information_schema.columns
-                               WHERE table_schema='public' AND table_name='request_records' AND column_name='infer_request_body') THEN
-                        ALTER TABLE public.request_records DROP COLUMN infer_request_body;
-                    END IF;
-                    -- 删除旧的 infer_response 列
-                    IF EXISTS (SELECT 1 FROM information_schema.columns
-                               WHERE table_schema='public' AND table_name='request_records' AND column_name='infer_response') THEN
-                        ALTER TABLE public.request_records DROP COLUMN infer_response;
-                    END IF;
-                END $$;
-            """)
 
             # 兼容性：为 model_registry 添加新列
             print("  检查 model_registry 表列兼容性...")
