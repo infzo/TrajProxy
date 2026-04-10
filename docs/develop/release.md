@@ -1,5 +1,7 @@
 # TrajProxy 变更日志
 
+> **目录**: [文档中心](../README.md) | [经验总结](../experience/README.md)
+
 > 本文档记录 TrajProxy 项目的所有重要变更。使用 `/record-change` 自动追加新条目。
 
 ---

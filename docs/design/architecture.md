@@ -1,5 +1,7 @@
 # TrajProxy 架构文档
 
+> **导航**: [文档中心](../README.md) | [API 参考](../develop/api_reference.md) | [开发指南](../develop/development.md)
+
 ## 概述
 
 TrajProxy 是一个 LLM 请求代理服务，支持两种请求处理模式：

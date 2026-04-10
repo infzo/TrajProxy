@@ -1,5 +1,7 @@
 # Parser 行为逻辑文档
 
+> **导航**: [文档中心](../README.md) | [架构文档](architecture.md) | [vLLM 对比](../others/compare_vllm.md)
+
 ## 概述
 
 TrajProxy 的 Parser 模块参考 vLLM 0.16.0 接口设计，提供统一的工具调用和推理内容解析能力。支持非流式和流式两种模式。

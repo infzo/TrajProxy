@@ -1,5 +1,7 @@
 # 数据库设计
 
+> **导航**: [文档中心](../README.md) | [Store 模块](../develop/store.md) | [优化方案](next_db.md)
+
 TrajProxy 使用 PostgreSQL 存储模型配置和请求轨迹记录。
 
 请求轨迹采用**元数据+详情分离**架构：元数据表长期保留轻量统计信息，详情表只存近期大字段（按月分区），过期后归档到外部 JSONL+GZIP 文件。

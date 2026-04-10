@@ -1,5 +1,7 @@
 # TITO 模式 Message Converter 集成一致性 Jinja 模板设计方案
 
+> **导航**: [文档中心](../README.md) | [TITO v1](tito-v1.md) | [模板一致性](template_consistency.md) | [Jinja 处理](jinja-process.md)
+
 ## Context
 
 当前系统在 TITO (token-in-token-out) 模式下使用 `MessageConverter` 将 OpenAI messages 转换为 prompt text。现有的 `chat_template.jinja` 模板存在**多轮不一致**问题，导致前缀匹配缓存失败。

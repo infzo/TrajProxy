@@ -1,5 +1,7 @@
 # TITO 前缀匹配方案设计
 
+> **导航**: [文档中心](../README.md) | [架构文档](architecture.md) | [TITO v2](tito-v2.md) | [模板一致性](template_consistency.md)
+
 ## 问题背景
 
 在RL（强化学习）场景的前缀匹配缓存中，多轮对话存在tokenizer prompt template不一致的问题。

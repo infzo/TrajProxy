@@ -1,5 +1,7 @@
 # 部署指南
 
+> **导航**: [文档中心](../README.md) | [开发环境](development.md) | [配置说明](configuration.md)
+
 TrajProxy 支持两种部署方式：本地开发模式和 Docker 容器化部署。
 
 ---

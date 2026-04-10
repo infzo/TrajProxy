@@ -1,5 +1,7 @@
 # API 参考文档
 
+> **导航**: [文档中心](../README.md) | [架构设计](../design/architecture.md) | [配置说明](configuration.md)
+
 TrajProxy 提供 OpenAI 兼容的 API 接口，支持聊天补全、模型管理和轨迹查询。
 
 ---
@@ -57,6 +59,7 @@ curl http://localhost:12300/health
 **端点**:
 - `POST /v1/chat/completions` - 标准接口
 - `POST /s/{session_id}/v1/chat/completions` - 带 session_id 的路径接口
+- `POST /s/{run_id},{session_id}/v1/chat/completions` - 同时传递 run_id 和 session_id
 
 **请求头**:
 
@@ -65,12 +68,19 @@ curl http://localhost:12300/health
 | Content-Type | string | 是 | `application/json` |
 | Authorization | string | 否 | Bearer Token |
 | x-session-id | string | 否 | 会话 ID |
+| x-sandbox-traj-id | string | 否 | 会话 ID（优先级高于 x-session-id） |
 
-**Run ID 解析规则**（按优先级）:
+**run_id 提取优先级**:
 
-1. **Model 参数包含逗号**: `model` 格式为 `{model_name},{run_id}`，使用 model 中解析的 run_id
-2. **Session ID 包含逗号**: `session_id` 格式为 `{run_id},{sample_id},{task_id}`，使用 session_id 中解析的 run_id
-3. **默认值**: run_id 默认为 `DEFAULT`
+1. **路径参数逗号前**: `/s/run_001,session-abc/...` → run_id = `run_001`
+2. **Model 参数逗号后**: `model: "gpt-4,run_002"` → run_id = `run_002`
+3. **默认值**: run_id = `DEFAULT`
+
+**session_id 提取优先级**:
+
+1. **路径参数**: `/s/session-abc/...` 或 `/s/run_001,session-abc/...`
+2. **x-sandbox-traj-id Header**
+3. **x-session-id Header**
 
 **请求体**:
 
@@ -145,38 +155,60 @@ data: [DONE]
 **示例**:
 
 ```bash
-# 方式1：通过请求头传递 session_id（run_id 从 session_id 提取）
-curl -X POST http://localhost:12300/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-session-id: app_001,sample_001,task_001" \
-  -d '{
-    "model": "qwen3.5-2b",
-    "messages": [{"role": "user", "content": "你好"}]
-  }'
-
-# 方式2：通过路径传递 session_id
-curl -X POST http://localhost:12300/s/app_001,sample_001,task_001/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "qwen3.5-2b",
-    "messages": [{"role": "user", "content": "你好"}]
-  }'
-
-# 方式3：通过 model 参数传递 run_id（推荐）
+# 方式1：通过 model 参数传递 run_id（推荐）
 curl -X POST http://localhost:12300/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "qwen3.5-2b,app_001",
     "messages": [{"role": "user", "content": "你好"}]
   }'
+# run_id = app_001, session_id = None
 
-# 方式4：不传 session_id，使用 DEFAULT run_id
+# 方式2：通过路径传递 session_id
+curl -X POST http://localhost:12300/s/uuid-123/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3.5-2b,app_001",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'
+# run_id = app_001, session_id = uuid-123
+
+# 方式3：通过路径同时传递 run_id 和 session_id
+curl -X POST http://localhost:12300/s/app_001,uuid-123/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3.5-2b",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'
+# run_id = app_001 (路径优先), session_id = uuid-123
+
+# 方式4：通过请求头传递 session_id
+curl -X POST http://localhost:12300/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-session-id: uuid-123" \
+  -d '{
+    "model": "qwen3.5-2b,app_001",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'
+# run_id = app_001, session_id = uuid-123
+
+# 方式5：不传 session_id，使用 DEFAULT run_id
 curl -X POST http://localhost:12300/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "qwen3.5-2b",
     "messages": [{"role": "user", "content": "你好"}]
   }'
+# run_id = DEFAULT, session_id = None
+
+# 兼容旧版三段格式（自动拆分 run_id 和 session_id）
+curl -X POST http://localhost:12300/s/app_001,sample_001,task_001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3.5-2b",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'
+# run_id = app_001, session_id = "sample_001,task_001"
 ```
 
 ---

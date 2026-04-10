@@ -1,5 +1,7 @@
 # Jinja 模板多轮一致性转换工作流
 
+> **导航**: [文档中心](../README.md) | [模板一致性](template_consistency.md) | [TITO 方案](tito-v1.md)
+
 ## 1. 多轮一致性定义
 
 ### 1.1 核心概念
@@ -247,7 +249,7 @@ echo "转换完成: $OUTPUT_FILE"
 将此工作流封装为可复用的 skill：
 
 ```yaml
-# .claude/skills/jinja-to-tito.md
+# .claude/skills/jinja-to-tito-v1.md
 name: jinja-to-tito
 description: 将 Jinja 模板转换为具有多轮一致性的 TITO 模板
 trigger: 当用户需要转换 Jinja 模板以支持 RL 前缀匹配缓存时

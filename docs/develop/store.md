@@ -1,5 +1,7 @@
 # Store 模块文档
 
+> **导航**: [文档中心](../README.md) | [数据库设计](../design/database.md)
+
 ## 概述
 
 `traj_proxy/store/` 是数据持久化层，负责 PostgreSQL 连接管理和数据访问。为上层提供模型配置管理和请求轨迹存储能力。

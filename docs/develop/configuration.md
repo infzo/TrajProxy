@@ -1,5 +1,7 @@
 # 配置详解
 
+> **导航**: [文档中心](../README.md) | [部署指南](deployment.md) | [API 参考](api_reference.md)
+
 TrajProxy 使用 YAML 格式的配置文件，默认位于 `configs/config.yaml`。
 
 ---
