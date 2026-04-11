@@ -123,7 +123,7 @@ Body:
 
 ```
 优先级1（最高）: 路径参数 /s/{run_id}/{session_id}/v1/... 或 /s/{session_id}/v1/...
-优先级2: x-session-id Header
+优先级2: x-session-id Header（Nginx 注入或客户端传递）
 优先级3: x-sandbox-traj-id Header
 优先级4（最低）: 空
 ```

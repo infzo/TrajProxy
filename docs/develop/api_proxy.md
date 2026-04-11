@@ -50,8 +50,8 @@ TrajProxy 提供模型管理、轨迹查询和聊天补全接口。直接访问 
 #### run_id 提取优先级
 
 ```
-优先级1（最高）: 路径参数（x-path-run-id，由 Nginx 注入）
-优先级2: x-run-id Header
+优先级1（最高）: 路径参数（FastAPI query 参数）
+优先级2: x-run-id Header（Nginx 注入或客户端传递）
 优先级3: model 参数逗号后：model: "gpt-4,run_001"
 优先级4（最低）: 空（不设默认值）
 ```
@@ -59,9 +59,9 @@ TrajProxy 提供模型管理、轨迹查询和聊天补全接口。直接访问 
 #### session_id 提取优先级
 
 ```
-优先级1（最高）: 路径参数（x-path-session，由 Nginx 注入）
-优先级2: x-sandbox-traj-id Header
-优先级3: x-session-id Header
+优先级1（最高）: 路径参数（FastAPI query 参数）
+优先级2: x-session-id Header（Nginx 注入或客户端传递）
+优先级3: x-sandbox-traj-id Header
 优先级4（最低）: 空
 ```
 
@@ -105,9 +105,7 @@ Body:
 | Authorization | string | 否 | Bearer Token |
 | x-run-id | string | 否 | 运行 ID（用于模型路由） |
 | x-session-id | string | 否 | 会话 ID |
-| x-sandbox-traj-id | string | 否 | 会话 ID（优先级高于 x-session-id） |
-| x-path-run-id | string | 否 | 路径参数（Nginx 注入） |
-| x-path-session | string | 否 | 路径参数（Nginx 注入） |
+| x-sandbox-traj-id | string | 否 | 会话 ID（优先级低于 x-session-id） |
 
 ### 请求体
 

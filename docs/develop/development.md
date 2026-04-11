@@ -78,34 +78,49 @@ TrajProxy/
 │   ├── app.py                      # 应用入口
 │   ├── exceptions.py               # 自定义异常
 │   │
-│   ├── proxy_core/                 # 推理核心模块
+│   ├── serve/                      # API 服务层
 │   │   ├── routes.py               # API 路由定义
-│   │   ├── processor.py            # 非流式请求处理器
-│   │   ├── streaming_processor.py  # 流式请求处理器
+│   │   ├── schemas.py              # 请求/响应模型
+│   │   └── dependencies.py         # FastAPI 依赖注入
+│   │
+│   ├── proxy_core/                 # 推理核心模块
+│   │   ├── processor.py            # 统一请求处理器
 │   │   ├── processor_manager.py    # 处理器管理器
-│   │   ├── prompt_builder.py       # 消息转换器
-│   │   ├── token_builder.py        # Token 处理器
 │   │   ├── infer_client.py         # 推理客户端
 │   │   ├── infer_response_parser.py # Infer 响应解析器
-│   │   ├── streaming.py            # 流式响应生成器
 │   │   ├── context.py              # 处理上下文数据类
+│   │   ├── provider.py             # 轨迹查询提供者
+│   │   │
+│   │   ├── pipeline/               # 处理管道
+│   │   │   ├── base.py             # 管道基类
+│   │   │   ├── direct_pipeline.py  # 直接转发管道
+│   │   │   └── token_pipeline.py   # Token 模式管道
+│   │   │
+│   │   ├── converters/             # 转换器
+│   │   │   ├── message_converter.py # 消息转换器
+│   │   │   └── token_converter.py  # Token 转换器
+│   │   │
+│   │   ├── builders/               # 响应构建器
+│   │   │   ├── openai_builder.py   # OpenAI 响应构建器
+│   │   │   └── stream_builder.py   # 流式响应构建器
+│   │   │
+│   │   ├── cache/                  # 缓存
+│   │   │   └── prefix_cache.py     # 前缀匹配缓存
+│   │   │
 │   │   └── parsers/                # 解析器模块
 │   │       ├── base.py             # 基础数据结构
-│   │       ├── unified_parser.py   # 统一解析器
 │   │       ├── parser_manager.py   # 解析器管理器
-│   │       ├── tool_parsers/       # 工具解析器
-│   │       └── reasoning_parsers/  # 推理解析器
+│   │       └── vllm_compat/        # vLLM 兼容解析器
+│   │           ├── tool_parsers/   # 工具解析器
+│   │           └── reasoning_parsers/ # 推理解析器
 │   │
 │   ├── store/                      # 存储模块
 │   │   ├── database_manager.py     # 数据库连接池管理
 │   │   ├── model_repository.py     # 模型配置仓库
 │   │   ├── request_repository.py   # 请求记录仓库
+│   │   ├── model_synchronizer.py   # 模型同步器
 │   │   ├── notification_listener.py # LISTEN/NOTIFY 监听器
 │   │   └── models.py               # 数据模型定义
-│   │
-│   ├── transcript_provider/        # 轨迹查询模块
-│   │   ├── provider.py             # 轨迹提供者
-│   │   └── routes.py               # API 路由
 │   │
 │   ├── workers/                    # Worker 模块
 │   │   ├── worker.py               # ProxyWorker 实现
@@ -114,13 +129,16 @@ TrajProxy/
 │   │
 │   └── utils/                      # 工具模块
 │       ├── config.py               # 配置管理
-│       └── logger.py               # 日志系统
+│       ├── logger.py               # 日志系统
+│       └── validators.py           # 参数校验器
 │
 ├── tests/                          # 测试目录
 │   └── e2e/                        # 端到端测试
-│       ├── conftest.py             # 测试配置
-│       ├── run_e2e.py              # 测试运行脚本
-│       └── test_*.py               # 测试文件
+│       ├── run_tests.sh            # 测试运行脚本
+│       ├── layers/                 # 分层测试
+│       │   ├── nginx/              # Nginx 入口层测试
+│       │   └── proxy/              # Proxy 直连层测试
+│       └── utils.sh                # 测试工具函数
 │
 ├── scripts/                        # 脚本目录
 │   ├── start_local.sh              # 本地启动脚本
@@ -143,39 +161,73 @@ TrajProxy/
 
 ## 核心模块说明
 
+### serve - API 服务层
+
+处理 HTTP 请求的路由和参数校验。
+
+- **routes.py**: 定义聊天补全、模型管理、轨迹查询等 API 端点
+- **schemas.py**: Pydantic 模型定义
+- **dependencies.py**: FastAPI 依赖注入
+
 ### proxy_core - 推理核心
 
-核心请求处理流程：
+核心请求处理流程（Pipeline 模式）：
 
 ```
 请求 → routes.py → ProcessorManager.get_processor()
                      ↓
-              Processor / StreamingProcessor
+              Processor (选择 Pipeline)
                      ↓
-              PromptBuilder (messages → prompt_text)
-                     ↓
-              TokenBuilder (prompt_text → token_ids, 前缀匹配)
-                     ↓
-              InferClient (发送到推理服务)
-                     ↓
-              TokenBuilder (token_ids → text)
-                     ↓
-              Parser (解析 tool_calls, reasoning)
-                     ↓
-              PromptBuilder (构建 OpenAI Response)
+         ┌─────────┴─────────┐
+         ↓                   ↓
+   DirectPipeline      TokenPipeline
+   (直接转发模式)       (Token 模式)
+         ↓                   ↓
+         │            MessageConverter (messages → prompt_text)
+         │                   ↓
+         │            TokenConverter (prompt_text → token_ids, 前缀匹配)
+         │                   ↓
+         └───────┬───────────┘
+                 ↓
+          InferClient (发送到推理服务)
+                 ↓
+         ┌───────┴───────┐
+         ↓               ↓
+   DirectPipeline   TokenPipeline
+   (直接返回)        (token_ids → text)
+                         ↓
+                  Parser (解析 tool_calls, reasoning)
+                         ↓
+                  ResponseBuilder (构建 OpenAI Response)
 ```
+
+**核心组件**：
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| Processor | `processor.py` | 统一请求处理器，选择 Pipeline |
+| ProcessorManager | `processor_manager.py` | 多模型处理器管理器 |
+| DirectPipeline | `pipeline/direct_pipeline.py` | 直接转发管道 |
+| TokenPipeline | `pipeline/token_pipeline.py` | Token 模式管道 |
+| MessageConverter | `converters/message_converter.py` | 消息 → PromptText |
+| TokenConverter | `converters/token_converter.py` | Text ↔ TokenIds |
+| PrefixMatchCache | `cache/prefix_cache.py` | 前缀匹配缓存 |
+| OpenAIResponseBuilder | `builders/openai_builder.py` | 构建非流式响应 |
+| StreamChunkBuilder | `builders/stream_builder.py` | 构建流式响应 |
 
 ### store - 存储层
 
 - **DatabaseManager**: 管理连接池
 - **ModelRepository**: 模型配置 CRUD
 - **RequestRepository**: 请求轨迹存储
+- **ModelSynchronizer**: 模型配置同步
 - **NotificationListener**: LISTEN/NOTIFY 实时同步
 
 ### workers - Worker 管理
 
 - **WorkerManager**: 启动/管理多个 ProxyWorker
 - **ProxyWorker**: FastAPI 应用，处理请求
+- **RouteRegistrar**: 注册 API 路由
 
 ---
 
@@ -204,27 +256,54 @@ python scripts/init_db.py
 ```bash
 cd tests/e2e
 
-# 运行所有测试
-python run_e2e.py
+# 运行全部两层测试（Nginx + Proxy）
+./run_tests.sh
 
-# 运行指定测试
-python run_e2e.py test_health.py
-python run_e2e.py test_model_management.py
-python run_e2e.py test_token_mode.py
-python run_e2e.py test_parsers.py
+# 仅运行 Nginx 层测试（port 12345）
+./run_tests.sh --layer nginx
+
+# 仅运行 Proxy 层测试（port 12300）
+./run_tests.sh --layer proxy
+
+# 按编号搜索运行
+./run_tests.sh F100
+
+# 指定层内特定用例
+./run_tests.sh --layer nginx F100 F101
 ```
 
 ### 测试文件说明
 
-| 测试文件 | 说明 |
-|----------|------|
-| `test_health.py` | 健康检查接口测试 |
-| `test_model_management.py` | 模型注册/删除/列表测试 |
-| `test_token_mode.py` | Token-in-Token-out 模式测试 |
-| `test_parsers.py` | Parser 解析逻辑测试 |
-| `test_http_request_formats.py` | HTTP 请求格式测试 |
-| `test_session_id.py` | Session ID 传递测试 |
-| `test_trajectory.py` | 轨迹查询测试 |
+**测试目录结构**：
+
+```
+tests/e2e/
+├── run_tests.sh          # 顶层编排器
+├── config.sh             # 测试配置
+├── utils.sh              # 工具函数
+└── layers/
+    ├── nginx/            # Nginx 入口层测试 (port 12345)
+    │   ├── run_layer.sh
+    │   └── scenarios/
+    │       ├── F100_basic_chat.sh
+    │       ├── F101_claude_scenario.sh
+    │       ├── F102_streaming_chat.sh
+    │       └── ...
+    └── proxy/            # Proxy 直连层测试 (port 12300)
+        ├── run_layer.sh
+        └── scenarios/
+            ├── F200_model_register_list_delete.sh
+            ├── F201_pangu_integration.sh
+            └── ...
+```
+
+**测试分类**：
+
+| 前缀 | 类型 | 说明 |
+|------|------|------|
+| F1xx | 功能测试 | Nginx 层基础功能 |
+| F2xx | 功能测试 | Proxy 层功能 |
+| P1xx | 性能测试 | 并发、稳定性测试 |
 
 ---
 
@@ -297,7 +376,7 @@ print(parser_cls)
 
 ### 1. 创建 Parser 类
 
-在 `traj_proxy/proxy_core/parsers/tool_parsers/` 或 `reasoning_parsers/` 下创建文件：
+在 `traj_proxy/proxy_core/parsers/vllm_compat/tool_parsers/` 或 `reasoning_parsers/` 下创建文件：
 
 ```python
 from traj_proxy.proxy_core.parsers.base import (
@@ -333,13 +412,16 @@ class MyToolParser(ToolParser):
 
 ### 2. 注册 Parser
 
-在 `tool_parser_manager.py` 或 `reasoning_parser_manager.py` 中注册：
+在 `traj_proxy/proxy_core/parsers/vllm_compat/tool_parsers/__init__.py` 中注册：
 
 ```python
-from .tool_parsers.my_parser import MyToolParser
+from .my_parser import MyToolParser
 
-ToolParserManager.register("my_parser", MyToolParser)
+# 添加到模块导出
+__all__ = [..., "MyToolParser"]
 ```
+
+然后在 `parser_manager.py` 中添加映射。
 
 ### 3. 使用 Parser
 

@@ -69,13 +69,13 @@ Nginx 会从 URL 路径中提取参数并注入到请求头：
 ```
 
 注入请求头：
-- `x-path-run-id: {run_id}`
-- `x-path-session: {session_id}`
+- `x-run-id: {run_id}`
+- `x-session-id: {session_id}`
 
 **示例**：
 ```bash
 POST /s/run_001/task-123/v1/chat/completions
-# 后端收到：x-path-run-id=run_001, x-path-session=task-123
+# 后端收到：x-run-id=run_001, x-session-id=task-123
 ```
 
 ### 一段路径格式
@@ -85,33 +85,35 @@ POST /s/run_001/task-123/v1/chat/completions
 ```
 
 注入请求头：
-- `x-path-session: {session_id}`
+- `x-session-id: {session_id}`
 
 **示例**：
 ```bash
 POST /s/task-123/v1/chat/completions
-# 后端收到：x-path-session=task-123
+# 后端收到：x-session-id=task-123
 ```
 
 ---
 
 ## ID 提取优先级
 
-### run_id 提取优先级
+Nginx 从 URL 路径提取 ID 并注入到请求头，LiteLLM 转发时保留这些 header。
+
+### run_id 提取优先级（TrajProxy 层面）
 
 ```
-优先级1（最高）: 路径参数 /s/{run_id}/{session_id}/v1/...
-优先级2: x-run-id Header
+优先级1（最高）: 路径参数 /s/{run_id}/{session_id}/v1/... → Nginx 注入 x-run-id header
+优先级2: x-run-id Header（Nginx 注入或客户端直接传递）
 优先级3: model 参数逗号后：model: "gpt-4,run_001"
 优先级4（最低）: 空（不设默认值）
 ```
 
-### session_id 提取优先级
+### session_id 提取优先级（TrajProxy 层面）
 
 ```
-优先级1（最高）: 路径参数 /s/{run_id}/{session_id}/v1/... 或 /s/{session_id}/v1/...
-优先级2: x-sandbox-traj-id Header
-优先级3: x-session-id Header
+优先级1（最高）: 路径参数 /s/{run_id}/{session_id}/v1/... 或 /s/{session_id}/v1/... → Nginx 注入 x-session-id header
+优先级2: x-session-id Header（Nginx 注入或客户端直接传递）
+优先级3: x-sandbox-traj-id Header
 优先级4（最低）: 空
 ```
 
@@ -190,8 +192,8 @@ curl http://localhost:12345/health
 # 两段路径：run_id + session_id
 location ~ ^/s/([^/]+)/([^/]+)/(v1/.*)$ {
     proxy_pass http://litellm/$3;
-    proxy_set_header x-path-run-id $1;
-    proxy_set_header x-path-session $2;
+    proxy_set_header x-run-id $1;
+    proxy_set_header x-session-id $2;
     proxy_buffering off;
     proxy_cache off;
 }
@@ -199,7 +201,7 @@ location ~ ^/s/([^/]+)/([^/]+)/(v1/.*)$ {
 # 一段路径：session_id
 location ~ ^/s/([^/]+)/(v1/.*)$ {
     proxy_pass http://litellm/$2;
-    proxy_set_header x-path-session $1;
+    proxy_set_header x-session-id $1;
     proxy_buffering off;
     proxy_cache off;
 }

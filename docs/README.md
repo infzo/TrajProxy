@@ -11,27 +11,29 @@ docs/
 ├── README.md                    # 文档索引（本文件）
 │
 ├── design/                      # 架构设计文档
-│   ├── architecture.md          # 系统架构设计
-│   ├── database.md              # 数据库设计
-│   ├── identifier_design.md     # ID 设计规范
-│   ├── next_db.md               # 数据库优化方案
+│   ├── architecture.md          # 系统架构设计（Pipeline 模式）
+│   ├── database.md              # 数据库设计（元数据+详情分离）
+│   ├── identifier_design.md     # ID 设计规范（run_id, session_id）
 │   ├── parser.md                # Parser 模块设计
+│   ├── jinja-process.md         # Jinja 模板转换工作流
 │   ├── tito-v1.md               # TITO 前缀匹配方案
-│   ├── tito-v2.md               # TITO 模式集成方案
-│   └── jinja-process.md         # Jinja 模板转换工作流
+│   └── tito-v2.md               # TITO 模式集成方案
 │
 ├── develop/                     # 开发与运维文档
+│   ├── api_nginx.md             # Nginx 入口 API（端口 12345）
+│   ├── api_proxy.md             # TrajProxy API（端口 12300+）
+│   ├── api_reference.md         # API 文档索引
 │   ├── development.md           # 开发环境搭建
 │   ├── deployment.md            # 部署指南
 │   ├── configuration.md         # 配置说明
-│   ├── api_reference.md         # API 参考手册
 │   ├── store.md                 # Store 模块文档
 │   ├── release.md               # 变更日志
 │   ├── core_cases.md            # 核心用例测试
 │   └── compare_vllm.md          # 与 vLLM 接口对比
 │
 └── experience/                  # 经验总结（项目历程）
-    └── README.md                # 经验索引
+    ├── README.md                # 经验索引
+    └── 20260410_exp_session_id_unified_semantics.md
 ```
 
 ---
@@ -43,24 +45,20 @@ docs/
 1. [开发环境搭建](develop/development.md) - 本地开发环境配置
 2. [部署指南](develop/deployment.md) - 本地/Docker 部署方式
 3. [配置说明](develop/configuration.md) - 配置文件详解
-4. [API 参考](develop/api_reference.md) - OpenAI 兼容接口
+4. [API 参考](develop/api_reference.md) - API 文档索引
+
+### API 文档
+
+- [Nginx 入口 API](develop/api_nginx.md) - 生产环境统一入口 (端口 12345)
+- [TrajProxy API](develop/api_proxy.md) - 直接访问 Worker (端口 12300+)
 
 ### 架构设计
 
-1. [系统架构](design/architecture.md) - Pipeline 架构、核心组件
-2. [数据库设计](design/database.md) - 表结构、存储策略
-3. [Parser 模块](design/parser.md) - 工具调用和推理内容解析
-4. [TITO 模式](design/tito-v1.md) - Token-in-Token-out 前缀匹配
-
-### 核心概念
-
-- [ID 设计规范](design/identifier_design.md) - run_id、session_id、model 语义定义
-- [Jinja 模板转换](design/jinja-process.md)
-
-### 项目历程
-
-- [变更日志](develop/release.md) - 版本变更记录
-- [经验总结](experience/README.md) - 问题解决历程
+1. [系统架构](design/architecture.md) - Pipeline 架构、核心组件、处理流程
+2. [数据库设计](design/database.md) - 元数据+详情分离架构、归档机制
+3. [ID 设计规范](design/identifier_design.md) - run_id、session_id、model 语义定义
+4. [Parser 模块](design/parser.md) - 工具调用和推理内容解析
+5. [TITO 模式](design/tito-v1.md) - Token-in-Token-out 前缀匹配
 
 ---
 

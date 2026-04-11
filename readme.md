@@ -211,11 +211,14 @@ TrajProxy/
 
 | 文档 | 说明 |
 |------|------|
-| [架构设计](docs/architecture.md) | Pipeline 架构、核心组件、处理流程 |
-| [API 参考](docs/develop/api_reference.md) | 完整的 API 接口文档 |
+| [文档中心](docs/README.md) | 文档索引和导航 |
+| [架构设计](docs/design/architecture.md) | Pipeline 架构、核心组件、处理流程 |
+| [API 参考](docs/develop/api_reference.md) | API 文档索引 |
+| [Nginx 入口 API](docs/develop/api_nginx.md) | Nginx 入口 (端口 12345) |
+| [TrajProxy API](docs/develop/api_proxy.md) | 直接访问 Worker (端口 12300+) |
+| [ID 设计规范](docs/design/identifier_design.md) | run_id、session_id 语义定义 |
+| [数据库设计](docs/design/database.md) | 表结构、数据模型、归档机制 |
 | [配置详解](docs/develop/configuration.md) | 配置文件说明、环境变量 |
-| [数据库设计](docs/database.md) | 表结构、数据模型、同步机制 |
-| [Parser 文档](docs/parser.md) | 工具调用和推理内容解析 |
 | [部署指南](docs/develop/deployment.md) | 本地开发、Docker 部署 |
 | [开发指南](docs/develop/development.md) | 开发环境、测试运行 |
 
