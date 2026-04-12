@@ -88,7 +88,8 @@ services:
     build:
       context: ..
       dockerfile: dockers/Dockerfile
-    container_name: traj_proxy
+    image: traj_proxy:latest
+    container_name: traj-proxy
     ports:
       - "12300-12320:12300-12320"
     volumes:

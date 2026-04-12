@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-IMAGE_NAME="${1:-trajproxy-allinone}"
+IMAGE_NAME="${1:-traj_proxy_allinone}"
 IMAGE_TAG="${2:-latest}"
 CONTAINER_NAME="traj-proxy"
 

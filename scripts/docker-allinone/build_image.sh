@@ -4,7 +4,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-IMAGE_NAME="${1:-trajproxy-allinone}"
+IMAGE_NAME="${1:-traj_proxy_allinone}"
 IMAGE_TAG="${2:-latest}"
 
 echo "=== 构建 TrajProxy All-in-One 镜像 ==="
@@ -22,7 +22,7 @@ echo "=== 构建完成 ==="
 echo "镜像: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo ""
 echo "运行方式:"
-echo "  docker run -d --name trajproxy \\"
+echo "  docker run -d --name traj_proxy \\"
 echo "    --shm-size=1g \\"
 echo "    --add-host=host.docker.internal:host-gateway \\"
 echo "    -p 12345:12345 \\"

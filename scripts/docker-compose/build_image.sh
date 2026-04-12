@@ -38,15 +38,15 @@ mkdir -p "$IMAGES_DIR"
 
 # 构建 amd64 镜像
 echo "=== 构建 amd64 镜像 ==="
-docker build --platform linux/amd64 -t traj-proxy-x86:${VERSION} -f "$DOCKERFILE" .
-docker save -o "${IMAGES_DIR}/traj-proxy.amd64.${VERSION_NUM}.tar" traj-proxy-x86:${VERSION}
+docker build --platform linux/amd64 -t traj-proxy-amd64:${VERSION} -f "$DOCKERFILE" .
+docker save -o "${IMAGES_DIR}/traj-proxy.amd64.${VERSION_NUM}.tar" traj-proxy-amd64:${VERSION}
 echo "amd64 镜像已导出: ${IMAGES_DIR}/traj-proxy.amd64.${VERSION_NUM}.tar"
 echo ""
 
 # 构建 arm64 镜像
 echo "=== 构建 arm64 镜像 ==="
-docker build --platform linux/arm64 -t traj-proxy-arm:${VERSION} -f "$DOCKERFILE" .
-docker save -o "${IMAGES_DIR}/traj-proxy.arm64.${VERSION_NUM}.tar" traj-proxy-arm:${VERSION}
+docker build --platform linux/arm64 -t traj-proxy-arm64:${VERSION} -f "$DOCKERFILE" .
+docker save -o "${IMAGES_DIR}/traj-proxy.arm64.${VERSION_NUM}.tar" traj-proxy-arm64:${VERSION}
 echo "arm64 镜像已导出: ${IMAGES_DIR}/traj-proxy.arm64.${VERSION_NUM}.tar"
 echo ""
 
