@@ -101,7 +101,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql://llmproxy:dbpassword9090@db:5432/traj_proxy
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=INFO
       - LOG_DIR=/app/logs
     depends_on:
       db:

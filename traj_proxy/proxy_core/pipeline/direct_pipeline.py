@@ -5,6 +5,7 @@ DirectPipeline - 直接转发管道
 """
 
 from typing import AsyncIterator, Dict, Any, Optional, List, TYPE_CHECKING
+import time
 
 from traj_proxy.proxy_core.pipeline.base import BasePipeline
 from traj_proxy.proxy_core.context import ProcessContext
@@ -108,11 +109,13 @@ class DirectPipeline(BasePipeline):
 
         try:
             # 直接转发到推理服务
+            t0 = time.perf_counter()
             context.raw_response = await self.infer_client.send_chat_completion(
                 messages=messages,
                 model=self.model,
                 **context.request_params
             )
+            context.inference_duration_ms = (time.perf_counter() - t0) * 1000
 
             # 提取响应信息用于存储
             if "choices" in context.raw_response and context.raw_response["choices"]:
@@ -130,7 +133,8 @@ class DirectPipeline(BasePipeline):
             self._update_timing(context)
             logger.info(
                 f"[{context.unique_id}] 直接转发请求完成: "
-                f"duration_ms={context.processing_duration_ms:.2f}"
+                f"duration_ms={context.processing_duration_ms:.2f}, "
+                f"inference_ms={context.inference_duration_ms:.2f}"
             )
 
             # 存储到数据库
@@ -167,15 +171,29 @@ class DirectPipeline(BasePipeline):
 
         try:
             # 直接转发到推理服务的流式接口
+            first_chunk_received = False
+            infer_start_time = time.perf_counter()
+
             async for chunk in self.infer_client.send_chat_completion_stream(
                 messages=messages,
                 model=self.model,
                 **context.request_params
             ):
+                # 记录TTFT（首Token时间）
+                if not first_chunk_received:
+                    context.ttft_ms = (time.perf_counter() - infer_start_time) * 1000
+                    first_chunk_received = True
+                    logger.info(
+                        f"[{context.unique_id}] TTFT: {context.ttft_ms:.2f}ms"
+                    )
+
                 # 累积流式响应中的所有字段
                 self._accumulate_stream_fields(context, chunk)
                 context.stream_chunk_count += 1
                 yield chunk
+
+            # 记录推理总耗时
+            context.inference_duration_ms = (time.perf_counter() - infer_start_time) * 1000
 
             # 流式结束后更新上下文
             await self._finalize_stream(context)
@@ -322,9 +340,13 @@ class DirectPipeline(BasePipeline):
             }
         }
 
+        ttft_str = f"{context.ttft_ms:.2f}" if context.ttft_ms else "N/A"
+        inference_str = f"{context.inference_duration_ms:.2f}" if context.inference_duration_ms else "N/A"
         logger.info(
             f"[{context.unique_id}] 流式处理完成（直接转发模式）: "
-            f"chunks={context.stream_chunk_count}, duration_ms={context.processing_duration_ms:.2f}"
+            f"chunks={context.stream_chunk_count}, "
+            f"duration_ms={context.processing_duration_ms:.2f}, "
+            f"ttft_ms={ttft_str}, inference_ms={inference_str}"
         )
 
         # 存储到数据库

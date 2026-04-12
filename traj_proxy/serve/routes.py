@@ -109,7 +109,7 @@ async def chat_completions(
     try:
         # 获取请求体
         body = await request.json()
-        logger.info(f"chat_completions: {request.headers=}, {body=}.")
+        # 仅记录关键元信息，避免日志冲刷
 
         # 提取请求参数
         messages = body.get("messages", [])

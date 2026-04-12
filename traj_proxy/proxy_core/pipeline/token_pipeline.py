@@ -97,16 +97,24 @@ class TokenPipeline(BasePipeline):
 
         try:
             # 阶段 1: Message → PromptText
+            t0 = time.perf_counter()
             context = await self._transform_messages(messages, context)
+            context.transform_duration_ms = (time.perf_counter() - t0) * 1000
 
             # 阶段 2: PromptText → TokenIds (带缓存)
+            t0 = time.perf_counter()
             context = await self._encode_text(context)
+            context.encode_duration_ms = (time.perf_counter() - t0) * 1000
 
             # 阶段 3: 推理
+            t0 = time.perf_counter()
             context = await self._inference(context)
+            context.inference_duration_ms = (time.perf_counter() - t0) * 1000
 
             # 阶段 4: TokenIds → ResponseText
+            t0 = time.perf_counter()
             context = await self._decode_response(context)
+            context.decode_duration_ms = (time.perf_counter() - t0) * 1000
 
             # 阶段 5: 构建响应
             context = self._build_response(context)
@@ -117,7 +125,11 @@ class TokenPipeline(BasePipeline):
             self._update_timing(context)
             logger.info(
                 f"[{context.unique_id}] 请求处理完成: "
-                f"duration_ms={context.processing_duration_ms:.2f}"
+                f"duration_ms={context.processing_duration_ms:.2f}, "
+                f"transform={context.transform_duration_ms:.2f}ms, "
+                f"encode={context.encode_duration_ms:.2f}ms, "
+                f"inference={context.inference_duration_ms:.2f}ms, "
+                f"decode={context.decode_duration_ms:.2f}ms"
             )
 
             # 存储到数据库
@@ -153,21 +165,28 @@ class TokenPipeline(BasePipeline):
 
         try:
             # 阶段 1: Message → PromptText
+            t0 = time.perf_counter()
             context = await self._transform_messages(messages, context)
+            context.transform_duration_ms = (time.perf_counter() - t0) * 1000
 
             # 阶段 2: PromptText → TokenIds (带缓存)
+            t0 = time.perf_counter()
             context = await self._encode_text(context)
+            context.encode_duration_ms = (time.perf_counter() - t0) * 1000
             prompt_input = context.token_ids
 
             logger.info(
                 f"[{context.unique_id}] TokenIds 转换完成: "
                 f"prompt_tokens={context.prompt_tokens}, "
-                f"cache_hit_tokens={context.cache_hit_tokens}"
+                f"cache_hit_tokens={context.cache_hit_tokens}, "
+                f"encode_ms={context.encode_duration_ms:.2f}"
             )
 
             # 流式状态
             previous_text = ""
             previous_token_ids = []
+            first_chunk_received = False
+            infer_start_time = time.perf_counter()
 
             # 使用上下文管理器自动管理流式状态
             with self.parser:
@@ -186,6 +205,14 @@ class TokenPipeline(BasePipeline):
                     )
 
                     if chunk:
+                        # 记录TTFT（首Token时间）
+                        if not first_chunk_received:
+                            context.ttft_ms = (time.perf_counter() - infer_start_time) * 1000
+                            first_chunk_received = True
+                            logger.info(
+                                f"[{context.unique_id}] TTFT: {context.ttft_ms:.2f}ms"
+                            )
+
                         # 更新状态
                         previous_text = context.stream_buffer_text
                         previous_token_ids = context.stream_buffer_ids.copy()
@@ -196,6 +223,9 @@ class TokenPipeline(BasePipeline):
                         # 如果是最后一个 chunk，结束流
                         if context.stream_finished:
                             break
+
+            # 记录推理总耗时（从开始推理到流结束）
+            context.inference_duration_ms = (time.perf_counter() - infer_start_time) * 1000
 
             # 流式结束后完成处理
             await self._finalize_stream(context)
@@ -664,10 +694,13 @@ class TokenPipeline(BasePipeline):
             context.response_text, context
         )
 
+        ttft_str = f"{context.ttft_ms:.2f}" if context.ttft_ms else "N/A"
+        inference_str = f"{context.inference_duration_ms:.2f}" if context.inference_duration_ms else "N/A"
         logger.info(
             f"[{context.unique_id}] 流式处理完成: "
             f"chunks={context.stream_chunk_count}, "
-            f"duration_ms={context.processing_duration_ms:.2f}"
+            f"duration_ms={context.processing_duration_ms:.2f}, "
+            f"ttft_ms={ttft_str}, inference_ms={inference_str}"
         )
 
         # 存储到数据库

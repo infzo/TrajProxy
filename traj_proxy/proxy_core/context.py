@@ -69,6 +69,15 @@ class ProcessContext:
     end_time: Optional[datetime] = None
     processing_duration_ms: Optional[float] = None
 
+    # 分阶段耗时（毫秒）
+    transform_duration_ms: Optional[float] = None    # 消息转换耗时
+    encode_duration_ms: Optional[float] = None       # Token编码耗时
+    inference_duration_ms: Optional[float] = None    # 推理请求耗时
+    decode_duration_ms: Optional[float] = None       # Token解码耗时
+
+    # 流式性能指标
+    ttft_ms: Optional[float] = None                  # 首Token时间（Time To First Token）
+
     # ========== 统计信息 ==========
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None

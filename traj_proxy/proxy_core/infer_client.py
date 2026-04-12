@@ -98,7 +98,7 @@ class InferClient:
         loop = asyncio.get_event_loop()
 
         try:
-            logger.info(f"handle_request: {url=}, {request_body=}.")
+            logger.debug(f"Infer 请求: {url}")
             response = await loop.run_in_executor(
                 self._executor,
                 lambda: session.post(
@@ -129,7 +129,7 @@ class InferClient:
         loop = asyncio.get_event_loop()
 
         try:
-            logger.info(f"handle_stream_request: {url=}, {request_body=}.")
+            logger.debug(f"Infer 流式请求: {url}")
             response = await loop.run_in_executor(
                 self._executor,
                 lambda: session.post(
