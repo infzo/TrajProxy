@@ -2,7 +2,7 @@
 
 > **导航**: [文档中心](../README.md) | [部署指南](deployment.md) | [API 参考](api_reference.md)
 
-TrajProxy 使用 YAML 格式的配置文件，默认位于 `configs/config.yaml`。
+TrajProxy 使用 YAML 格式的配置文件，默认位于 `dockers/compose/configs/config.yaml`（Docker Compose 部署）或 `dockers/allinone/configs/config.yaml`（All-in-One 部署）。
 
 ---
 
@@ -11,7 +11,7 @@ TrajProxy 使用 YAML 格式的配置文件，默认位于 `configs/config.yaml`
 配置文件按以下顺序查找：
 
 1. **环境变量指定**: `TRAJ_PROXY_CONFIG` 环境变量
-2. **默认路径**: `configs/config.yaml`
+2. **默认路径**: `dockers/compose/configs/config.yaml`
 
 ```bash
 # 使用环境变量指定配置文件

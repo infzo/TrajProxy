@@ -33,7 +33,7 @@ if [ "$1" = "litellm" ]; then
         echo "等待 PostgreSQL 就绪..."
         sleep 2
     done
-    exec /opt/litellm-venv/bin/litellm --config /app/configs/litellm_allinone.yaml
+    exec /opt/litellm-venv/bin/litellm --config /app/configs/litellm.yaml
 fi
 
 if [ "$1" = "traj_proxy" ]; then
@@ -357,7 +357,7 @@ gosu postgres /usr/lib/postgresql/16/bin/pg_ctl -D "${PGDATA}" stop -m fast
 # ========================================
 echo "--- 更新配置文件 ---"
 # 用运行时 DATABASE_URL 替换 config_allinone.yaml 中的硬编码值
-CONFIG_FILE="/app/configs/config_allinone.yaml"
+CONFIG_FILE="/app/configs/config.yaml"
 if [ -f "${CONFIG_FILE}" ]; then
     sed -i "s|postgresql://[^@]*@[^/]*/${TRAJ_PROXY_DB}|${DATABASE_URL}|g" "${CONFIG_FILE}"
 fi

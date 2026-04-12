@@ -5,8 +5,12 @@
 ## 常用命令
 
 ```shell
-docker build --platform linux/amd64 -t traj-proxy-x86:0.0.9 -f dockers/Dockerfile .
-docker build -f dockers/Dockerfile .
+# Docker Compose 模式构建
+docker build --platform linux/amd64 -t traj-proxy-x86:0.0.9 -f dockers/compose/Dockerfile .
+docker build -f dockers/compose/Dockerfile .
+
+# All-in-One 模式构建
+docker build -f dockers/allinone/Dockerfile -t traj_proxy_allinone:latest .
 
 ## 查询模型
 curl http://localhost:12345/models

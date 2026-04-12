@@ -27,11 +27,12 @@ ray:
 
 # 数据库配置
 database:
-  url: "postgresql://llmproxy:dbpassword9090@db:5432/traj_proxy"
+  # url: "postgresql://llmproxy:dbpassword9090@db:5432/traj_proxy"
+  url: "postgresql://pduser:pdpwd123@192.168.65.254:5433/traj_proxy"
   # 连接池配置
   pool:
-    min_size: 50               # 最小连接数
-    max_size: 100             # 最大连接数
+    min_size: 10               # 最小连接数
+    max_size: 30             # 最大连接数
     timeout: 60                # 连接超时时间（秒）
 
 # ProcessorManager 配置

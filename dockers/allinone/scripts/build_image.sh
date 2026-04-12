@@ -13,9 +13,9 @@ echo "镜像名称: ${IMAGE_NAME}:${IMAGE_TAG}"
 
 docker build \
     --no-cache \
-    -f "${PROJECT_DIR}/dockers/Dockerfile.allinone" \
+    -f "${PROJECT_DIR}/Dockerfile" \
     -t "${IMAGE_NAME}:${IMAGE_TAG}" \
-    "${PROJECT_DIR}"
+    "${PROJECT_DIR}/../.."
 
 echo ""
 echo "=== 构建完成 ==="

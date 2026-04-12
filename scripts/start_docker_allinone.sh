@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 IMAGE_NAME="${1:-traj_proxy_allinone}"
 IMAGE_TAG="${2:-latest}"
 CONTAINER_NAME="traj-proxy"
@@ -19,7 +19,7 @@ echo ""
 # 检查镜像是否存在，不存在则构建
 if ! docker image inspect "${IMAGE_NAME}:${IMAGE_TAG}" &>/dev/null; then
     echo "镜像不存在，正在构建..."
-    "${SCRIPT_DIR}/build_image.sh" "${IMAGE_NAME}" "${IMAGE_TAG}"
+    "${PROJECT_DIR}/dockers/allinone/scripts/build_image.sh" "${IMAGE_NAME}" "${IMAGE_TAG}"
     echo ""
 fi
 

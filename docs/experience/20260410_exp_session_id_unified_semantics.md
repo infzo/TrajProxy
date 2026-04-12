@@ -72,7 +72,7 @@ TrajProxy 中存在多个标识字段（`run_id`、`session_id`、`model`、`req
 
 ### Nginx 配置
 
-**文件**: `configs/nginx.conf`, `configs/nginx_allinone.conf`
+**文件**: `dockers/compose/configs/nginx.conf`, `dockers/allinone/configs/nginx.conf`
 
 ```nginx
 # 变更前

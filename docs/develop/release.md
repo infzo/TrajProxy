@@ -115,7 +115,7 @@
 - `traj_proxy/store/database_manager.py`
 - `traj_proxy/store/model_registry.py`（新增）
 - `traj_proxy/transcript_provider/`
-- `configs/litellm.yaml`（新增）
+- `dockers/compose/configs/litellm.yaml`（新增）
 - `scripts/`
 
 ---

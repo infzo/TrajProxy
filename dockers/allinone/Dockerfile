@@ -46,9 +46,9 @@ RUN python -m venv /opt/litellm-venv && \
 # ========================================
 # 应用代码复制
 # ========================================
-COPY scripts/tools/download_tokenizer.py ./download_tokenizer.py
-COPY scripts/docker-compose/entrypoint.sh ./scripts/entrypoint.sh
-COPY scripts/docker-allinone/entrypoint.sh ./scripts/entrypoint_allinone.sh
+COPY scripts/download_tokenizer.py ./download_tokenizer.py
+COPY dockers/compose/scripts/entrypoint.sh ./scripts/entrypoint.sh
+COPY dockers/allinone/scripts/entrypoint.sh ./scripts/entrypoint_allinone.sh
 
 # models 目录
 RUN mkdir -p ./models
@@ -60,10 +60,10 @@ COPY traj_proxy/ ./traj_proxy/
 # ========================================
 # 配置文件（All-in-One 版本）
 # ========================================
-COPY configs/nginx_allinone.conf /etc/nginx/conf.d/default.conf
-COPY configs/litellm_allinone.yaml /app/configs/litellm_allinone.yaml
-COPY configs/config_allinone.yaml /app/configs/config_allinone.yaml
-COPY configs/supervisord.conf /etc/supervisor/conf.d/trajproxy.conf
+COPY dockers/allinone/configs/nginx.conf /etc/nginx/conf.d/default.conf
+COPY dockers/allinone/configs/litellm.yaml /app/configs/litellm.yaml
+COPY dockers/allinone/configs/config.yaml /app/configs/config.yaml
+COPY dockers/allinone/configs/supervisord.conf /etc/supervisor/conf.d/trajproxy.conf
 
 # ========================================
 # 运行时目录准备
@@ -89,7 +89,7 @@ EXPOSE 12345
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 ENV PGDATA=/data/postgres
-ENV TRAJ_PROXY_CONFIG=/app/configs/config_allinone.yaml
+ENV TRAJ_PROXY_CONFIG=/app/configs/config.yaml
 
 # 数据持久化卷
 VOLUME ["/data/postgres", "/app/logs", "/app/models"]

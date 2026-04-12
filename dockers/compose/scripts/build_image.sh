@@ -5,9 +5,9 @@
 set -e
 
 # 项目根目录
-PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 IMAGES_DIR="${PROJECT_ROOT}/dockers/images"
-DOCKERFILE="${PROJECT_ROOT}/dockers/Dockerfile"
+DOCKERFILE="${PROJECT_ROOT}/dockers/compose/Dockerfile"
 
 # 检查版本号参数
 if [ -z "$1" ]; then

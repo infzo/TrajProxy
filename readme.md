@@ -159,8 +159,11 @@ flowchart LR
 ### Docker 部署
 
 ```bash
-# 一键启动所有容器
-./scripts/docker-compose/start.sh
+# Docker Compose 模式
+./scripts/start_docker_compose.sh
+
+# All-in-One 模式
+./scripts/start_docker_allinone.sh
 ```
 
 ### 验证服务
@@ -179,19 +182,29 @@ curl -X POST http://localhost:12300/v1/chat/completions \
 
 ```
 TrajProxy/
-├── configs/           # 配置文件
-├── docs/              # 详细文档
-├── traj_proxy/        # 主代码
-│   ├── proxy_core/    # 推理核心
-│   ├── store/         # 存储层
-│   ├── workers/       # Worker 管理
-│   └── utils/         # 工具模块
-├── tests/             # 测试
-├── scripts/           # 脚本
-│   ├── docker-compose/    # Docker Compose 部署
-│   ├── docker-allinone/   # 混合容器部署
-│   └── tools/         # 工具脚本
-└── dockers/           # Docker 配置
+├── dockers/               # Docker 部署相关
+│   ├── compose/           # Docker Compose 部署模式
+│   │   ├── configs/       # 配置文件
+│   │   ├── scripts/       # 启动脚本
+│   │   ├── Dockerfile
+│   │   └── docker-compose.yml
+│   ├── allinone/          # All-in-One 部署模式
+│   │   ├── configs/       # 配置文件
+│   │   ├── scripts/       # 启动脚本
+│   │   └── Dockerfile
+│   └── images/            # 镜像文件
+├── docs/                  # 详细文档
+├── traj_proxy/            # 主代码
+│   ├── proxy_core/        # 推理核心
+│   ├── store/             # 存储层
+│   ├── workers/           # Worker 管理
+│   └── utils/             # 工具模块
+├── tests/                 # 测试
+├── scripts/               # 工具脚本
+│   ├── archive_records.py
+│   ├── download_tokenizer.py
+│   └── verify_jinja_consistency.py
+└── models/                # 模型文件
 ```
 
 ## 文档

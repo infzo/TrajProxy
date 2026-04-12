@@ -186,7 +186,7 @@ curl http://localhost:12345/health
 
 ## Nginx 配置参考
 
-配置文件位置：`configs/nginx.conf`
+配置文件位置：`dockers/compose/configs/nginx.conf`（Docker Compose 部署）或 `dockers/allinone/configs/nginx.conf`（All-in-One 部署）
 
 ```nginx
 # 两段路径：run_id + session_id
