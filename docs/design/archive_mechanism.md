@@ -63,7 +63,7 @@ graph TB
 
     subgraph 归档层["归档层"]
         scheduler[ArchiveScheduler<br/>定时调度器] --> |触发| archiver[归档执行器]
-        archiver --> |导出| archive_file[/data/archives/<br/>YYYY_MM.jsonl.gz]
+        archiver --> |导出| archive_file["/data/archives/<br/>YYYY_MM.jsonl.gz"]
         archiver --> |更新| meta
         archiver --> |删除| detail
     end
@@ -133,7 +133,7 @@ graph LR
 
 ```mermaid
 flowchart TD
-    start[应用启动 / 归档执行前] --> check{检查当月分区}
+    start["应用启动 / 归档执行前"] --> check{检查当月分区}
     check --> |不存在| create_current[创建当月分区]
     check --> |存在| check_next{检查下月分区}
     create_current --> check_next
@@ -204,12 +204,12 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph 判断逻辑["过期判断逻辑"]
-        P[分区: 2026_03] --> |解析| R1[范围: 3/1 ~ 4/1]
-        R1 --> R2[分区上界: 4/1]
+        P["分区: 2026_03"] --> |解析| R1["范围: 3/1 ~ 4/1"]
+        R1 --> R2["分区上界: 4/1"]
         
-        T[配置: retention_days=30] --> |计算| TH[阈值: now - 30天<br/>= 4/13 - 30 = 3/14]
+        T["配置: retention_days=30"] --> |计算| TH["阈值: now - 30天<br/>= 4/13 - 30 = 3/14"]
         
-        R2 --> CMP{上界 ≤ 阈值?<br/>4/1 ≤ 3/14?}
+        R2 --> CMP{"上界 ≤ 阈值?<br/>4/1 ≤ 3/14?"}
         TH --> CMP
         
         CMP --> |否| SKIP[跳过：仍在活跃期]
