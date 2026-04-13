@@ -13,6 +13,7 @@ docs/
 ├── design/                      # 架构设计文档
 │   ├── architecture.md          # 系统架构设计（Pipeline 模式）
 │   ├── database.md              # 数据库设计（元数据+详情分离）
+│   ├── archive_mechanism.md     # 数据库归档机制设计
 │   ├── identifier_design.md     # ID 设计规范（run_id, session_id）
 │   ├── parser.md                # Parser 模块设计
 │   ├── jinja-process.md         # Jinja 模板转换工作流
@@ -56,9 +57,10 @@ docs/
 
 1. [系统架构](design/architecture.md) - Pipeline 架构、核心组件、处理流程
 2. [数据库设计](design/database.md) - 元数据+详情分离架构、归档机制
-3. [ID 设计规范](design/identifier_design.md) - run_id、session_id、model 语义定义
-4. [Parser 模块](design/parser.md) - 工具调用和推理内容解析
-5. [TITO 模式](design/tito-v1.md) - Token-in-Token-out 前缀匹配
+3. [归档机制](design/archive_mechanism.md) - 数据库归档设计文档（分区管理、调度执行、注意事项）
+4. [ID 设计规范](design/identifier_design.md) - run_id、session_id、model 语义定义
+5. [Parser 模块](design/parser.md) - 工具调用和推理内容解析
+6. [TITO 模式](design/tito-v1.md) - Token-in-Token-out 前缀匹配
 
 ---
 
