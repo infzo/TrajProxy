@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 IMAGE_NAME="${1:-traj_proxy_allinone}"
 IMAGE_TAG="${2:-latest}"
 
@@ -13,9 +13,9 @@ echo "镜像名称: ${IMAGE_NAME}:${IMAGE_TAG}"
 
 docker build \
     --no-cache \
-    -f "${PROJECT_DIR}/Dockerfile" \
+    -f "${PROJECT_DIR}/dockers/allinone/Dockerfile" \
     -t "${IMAGE_NAME}:${IMAGE_TAG}" \
-    "${PROJECT_DIR}/../.."
+    "${PROJECT_DIR}"
 
 echo ""
 echo "=== 构建完成 ==="
