@@ -268,9 +268,9 @@ Body:
 
 ## 轨迹查询
 
-### GET /trajectory
+### GET /trajectory（旧接口）
 
-根据 session_id 查询请求轨迹记录。
+根据 session_id 查询请求轨迹记录（旧版接口，保持兼容）。
 
 **查询参数**:
 
@@ -299,6 +299,96 @@ Body:
   ]
 }
 ```
+
+---
+
+### GET /trajectories/sessions（新接口）
+
+查询指定 run_id 下的 session 分组列表。
+
+**查询参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| run_id | string | 是 | 运行 ID |
+
+**响应**:
+
+```json
+{
+  "run_id": "run_001",
+  "sessions": [
+    {
+      "session_id": "task-123",
+      "run_id": "run_001",
+      "record_count": 5,
+      "first_request_time": "2024-01-01T00:00:00Z",
+      "last_request_time": "2024-01-01T01:30:00Z"
+    },
+    {
+      "session_id": "task-456",
+      "run_id": "run_001",
+      "record_count": 3,
+      "first_request_time": "2024-01-01T02:00:00Z",
+      "last_request_time": "2024-01-01T02:15:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### GET /trajectories/{session_id}/records（新接口）
+
+查询指定 session 的所有轨迹记录（返回完整详情字段）。
+
+**路径参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| session_id | string | 是 | 会话 ID |
+
+**响应**:
+
+```json
+{
+  "session_id": "task-123",
+  "records": [
+    {
+      "id": 1,
+      "unique_id": "task-123,req-uuid",
+      "request_id": "req-uuid",
+      "session_id": "task-123",
+      "run_id": "run_001",
+      "model": "qwen3.5-2b",
+      "prompt_tokens": 10,
+      "completion_tokens": 20,
+      "total_tokens": 30,
+      "cache_hit_tokens": 0,
+      "processing_duration_ms": 1500.5,
+      "start_time": "2024-01-01T00:00:00Z",
+      "end_time": "2024-01-01T00:00:01.5Z",
+      "created_at": "2024-01-01T00:00:00Z",
+      "error": null,
+      "tokenizer_path": "Qwen/Qwen3.5-2B",
+      "messages": [...],
+      "raw_request": {...},
+      "raw_response": {...},
+      "prompt_text": "...",
+      "token_ids": [1, 2, 3],
+      "response_text": "...",
+      "response_ids": [4, 5, 6],
+      "full_conversation_text": "...",
+      "full_conversation_token_ids": [1, 2, 3, 4, 5, 6],
+      "error_traceback": null
+    }
+  ]
+}
+```
+
+**说明**:
+- 只返回未归档的记录（`archive_location IS NULL`）
+- 返回完整的详情字段，包括 `messages`、`raw_request`、`raw_response` 等
 
 ---
 

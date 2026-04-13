@@ -164,3 +164,17 @@ def get_archive_config() -> Dict:
         "schedule": "0 2 * * *",
         "timezone": "UTC",
     })
+
+
+def get_infer_client_config() -> Dict:
+    """
+    获取 InferClient 配置
+
+    返回:
+        infer_client 配置字典，包含 connect_timeout, read_timeout, max_connections
+    """
+    return get_config().get("infer_client", {
+        "connect_timeout": 60,
+        "read_timeout": 600,
+        "max_connections": 1000
+    })

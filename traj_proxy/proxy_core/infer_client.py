@@ -27,7 +27,7 @@ class InferClient:
         self,
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        timeout: float = 300.0,
+        timeout: float = 600.0,
         connect_timeout: float = 60.0,
         max_connections: int = 1000,
         **kwargs
@@ -38,9 +38,9 @@ class InferClient:
 
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
-        
+
         # requests 专用配置 (连接超时, 读取超时)
-        self._timeout_config = 300 #(connect_timeout, timeout)
+        self._timeout_config = (connect_timeout, timeout)
         self._pool_size = max_connections
         
         self._session: Optional[requests.Session] = None

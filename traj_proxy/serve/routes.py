@@ -38,34 +38,34 @@ trajectory_router = APIRouter()
 logger = get_logger(__name__)
 
 
-def _extract_run_id(model: str, x_run_id: Optional[str], path_run_id: Optional[str]) -> Optional[str]:
+def _extract_run_id(model: str, x_run_id: Optional[str], run_id: Optional[str]) -> Optional[str]:
     """
     从多个来源提取 run_id
 
     优先级：
-    1. 路径参数（path_run_id）
+    1. 路径参数（run_id）
     2. x-run-id Header
     3. model 参数逗号后（model_name,run_id）
 
     Args:
         model: 模型参数，支持格式：model_name 或 model_name,run_id
         x_run_id: x-run-id header 值
-        path_run_id: FastAPI 路径参数中的 run_id
+        run_id: FastAPI 路径参数中的 run_id
 
     Returns:
         run_id 或 None
     """
     # 优先级1：路径参数（最高）
-    if path_run_id:
-        return path_run_id.strip() if path_run_id.strip() else None
+    if run_id:
+        return normalize_run_id(run_id.strip())
 
     # 优先级2：x-run-id header
     if x_run_id:
-        return x_run_id.strip() if x_run_id.strip() else None
+        return normalize_run_id(x_run_id.strip())
 
     # 优先级3：model 参数逗号后
     if ',' in model:
-        return model.split(',', 1)[1].strip() or None
+        return normalize_run_id(model.split(',', 1)[1].strip())
 
     return None
 
@@ -250,8 +250,8 @@ async def register_model(request: Request, req: RegisterModelRequest):
     try:
         processor_manager = get_processor_manager(request)
 
-        # run_id 可以为空，直接使用
-        run_id = req.run_id.strip() if req.run_id and req.run_id.strip() else None
+        # run_id 可以为空，替换标准化处理
+        run_id = normalize_run_id(req.run_id.strip())
 
         # 注册模型（会同步持久化到数据库）
         processor = await processor_manager.register_dynamic_processor(
@@ -316,8 +316,8 @@ async def delete_model(request: Request, model_name: str, run_id: str = ""):
     try:
         processor_manager = get_processor_manager(request)
 
-        # run_id 可以为空，直接使用
-        actual_run_id = run_id.strip() if run_id and run_id.strip() else None
+        # run_id 可以为空，替换标准化处理
+        actual_run_id = normalize_run_id(run_id.strip())
 
         deleted = await processor_manager.unregister_dynamic_processor(
             model_name, persist_to_db=True, run_id=actual_run_id

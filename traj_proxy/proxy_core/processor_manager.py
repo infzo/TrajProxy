@@ -23,7 +23,7 @@ from traj_proxy.store.request_repository import RequestRepository
 from traj_proxy.store.models import ModelConfig
 from traj_proxy.exceptions import DatabaseError
 from traj_proxy.utils.logger import get_logger
-from traj_proxy.utils.config import get_models_dir
+from traj_proxy.utils.config import get_models_dir, get_infer_client_config
 
 # API 数据模型已移至 schemas 模块
 from traj_proxy.serve.schemas import (
@@ -102,9 +102,15 @@ class ProcessorManager:
         if token_in_token_out and not tokenizer_path:
             raise ValueError("token_in_token_out=True 时，tokenizer_path 必须提供")
 
+        # 获取 InferClient 超时配置
+        infer_config = get_infer_client_config()
+
         infer_client = InferClient(
             base_url=url,
-            api_key=api_key
+            api_key=api_key,
+            timeout=infer_config.get("read_timeout", 600),
+            connect_timeout=infer_config.get("connect_timeout", 60),
+            max_connections=infer_config.get("max_connections", 1000)
         )
 
         config = {

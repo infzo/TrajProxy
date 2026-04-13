@@ -27,8 +27,7 @@ ray:
 
 # 数据库配置
 database:
-  # url: "postgresql://llmproxy:dbpassword9090@db:5432/traj_proxy"
-  url: "postgresql://pduser:pdpwd123@192.168.65.254:5433/traj_proxy"
+  url: "postgresql://llmproxy:dbpassword9090@db:5432/traj_proxy"
   # 连接池配置
   pool:
     min_size: 10               # 最小连接数
@@ -51,7 +50,9 @@ infer_client:
 
 # 归档配置（元数据表 + 详情表架构）
 archive:
-  enabled: true                 # 启用自动归档
+  enabled: true                  # 启用自动归档
   retention_days: 30             # 活跃详情保留天数
   storage_path: "/data/archives" # JSONL+GZIP 归档文件目录
   batch_size: 1000               # 每批处理的记录数
+  schedule: "0 2 * * *"          # cron 表达式：每天凌晨 2 点执行
+  timezone: "Asia/Shanghai"      # 时区配置

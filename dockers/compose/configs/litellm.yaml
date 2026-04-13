@@ -16,6 +16,9 @@ litellm_settings:
   disable_request_checking: true
   # 强制 /v1/messages 端点使用 chat/completions API 而非 Responses API
   use_chat_completions_url_for_anthropic_messages: true
+  # 超时配置（秒）
+  request_timeout: 600
+  stream_timeout: 600
 
 general_settings:
   master_key: "sk-1234"

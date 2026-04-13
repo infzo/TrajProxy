@@ -53,7 +53,8 @@ Nginx 作为统一入口，根据请求路径分发到 LiteLLM 网关或 TrajPro
 | 路径 | 后端 | 说明 |
 |------|------|------|
 | `/models` | TrajProxy | 模型管理 |
-| `/trajectory` | TrajProxy | 轨迹查询 |
+| `/trajectory` | TrajProxy | 轨迹查询（旧接口） |
+| `/trajectories` | TrajProxy | 轨迹查询（新接口） |
 | `/health` | TrajProxy | 健康检查 |
 
 ---
@@ -175,8 +176,12 @@ curl http://localhost:12345/models
 curl -X POST http://localhost:12345/models/register -d '{...}'
 curl -X DELETE "http://localhost:12345/models?model_name=gpt-4&run_id=run_001"
 
-# 轨迹查询
+# 轨迹查询（旧接口）
 curl "http://localhost:12345/trajectory?session_id=task-123"
+
+# 轨迹查询（新接口）
+curl "http://localhost:12345/trajectories/sessions?run_id=run_001"
+curl "http://localhost:12345/trajectories/task-123/records"
 
 # 健康检查
 curl http://localhost:12345/health
@@ -213,6 +218,11 @@ location /models {
 
 # 轨迹查询 → TrajProxy
 location = /trajectory {
+    proxy_pass http://traj_proxy_backend;
+}
+
+# 轨迹查询（新接口）→ TrajProxy
+location /trajectories {
     proxy_pass http://traj_proxy_backend;
 }
 ```

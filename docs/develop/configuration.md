@@ -58,12 +58,20 @@ processor_manager:
   listen_reconnect_delay: 5     # LISTEN 连接重连初始延迟（秒）
   listen_max_reconnect_delay: 60  # LISTEN 连接重连最大延迟（秒）
 
+# InferClient 配置
+infer_client:
+  connect_timeout: 60       # 连接超时（秒）
+  read_timeout: 600         # 读取超时（秒）
+  max_connections: 1000     # 最大连接数
+
 # 归档配置
 archive:
   enabled: false                 # 启用自动归档
   retention_days: 30             # 活跃详情保留天数
   storage_path: "/data/archives" # JSONL+GZIP 归档文件目录
   batch_size: 1000               # 每批处理的记录数
+  schedule: "0 2 * * *"          # cron 表达式：每天凌晨 2 点执行
+  timezone: "Asia/Shanghai"      # 时区配置
 ```
 
 ---
@@ -155,7 +163,7 @@ database:
 
 ### archive
 
-归档配置，控制过期详情数据的归档行为。详情见 [database.md](database.md) 中的归档机制。
+归档配置，控制过期详情数据的自动归档行为。详情见 [database.md](../design/database.md) 中的归档机制。
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -163,6 +171,24 @@ database:
 | `retention_days` | int | 30 | 活跃详情保留天数 |
 | `storage_path` | string | "/data/archives" | JSONL+GZIP 归档文件目录 |
 | `batch_size` | int | 1000 | 每批处理的记录数 |
+| `schedule` | string | "0 2 * * *" | cron 表达式，控制归档执行时间 |
+| `timezone` | string | "UTC" | 时区配置 |
+
+**自动归档说明：**
+
+当 `enabled: true` 时，应用启动后自动创建归档调度器：
+- 根据 cron 表达式定时执行归档任务
+- 应用内调度，不依赖系统 cron
+- 归档过期分区（分区上界 < retention_days 阈值）
+- 导出 JSONL+GZIP 文件后 DETACH + DROP 分区
+
+**cron 表达式示例：**
+
+| 表达式 | 说明 |
+|--------|------|
+| `0 2 * * *` | 每天凌晨 2 点 |
+| `0 */6 * * *` | 每 6 小时 |
+| `0 3 * * 0` | 每周日凌晨 3 点 |
 
 ---
 
@@ -182,6 +208,26 @@ ProcessorManager 同步配置，控制模型配置的跨 Worker 同步。
 
 1. **LISTEN/NOTIFY（主通道）**：实时监听数据库通知，延迟毫秒级
 2. **兜底轮询（备用）**：定期全量同步，防止通知丢失
+
+---
+
+### infer_client
+
+InferClient 超时配置，控制 TrajProxy 到推理服务的 HTTP 请求超时。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `connect_timeout` | int | 60 | 连接超时（秒） |
+| `read_timeout` | int | 600 | 读取超时（秒） |
+| `max_connections` | int | 1000 | 最大连接数 |
+
+**端到端超时链路：**
+
+```
+Client → Nginx → LiteLLM → TrajProxy → Infer
+         │         │          │          │
+         └─ 600s ──┴── 600s ──┴── 600s ──┘
+```
 
 ---
 
@@ -250,10 +296,12 @@ from traj_proxy.utils.config import (
     get_ray_config,
     get_processor_manager_config,
     get_archive_config,
+    get_infer_client_config,
 )
 
 proxy_config = get_proxy_workers_config()
 db_config = get_database_config()
 pool_config = get_database_pool_config()
 archive_config = get_archive_config()
+infer_config = get_infer_client_config()
 ```
