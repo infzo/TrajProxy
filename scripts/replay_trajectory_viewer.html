@@ -507,7 +507,7 @@
         </div>
         <div class="search-group">
             <label>Server</label>
-            <input type="text" id="serverUrl" value="http://localhost:8000" placeholder="API Endpoint" style="width: 220px;">
+            <input type="text" id="serverUrl" value="http://localhost:12300" placeholder="API Endpoint" style="width: 220px;">
 
             <label>Run ID</label>
             <input type="text" id="runId" placeholder="e.g. run-123" style="width: 160px;">
@@ -545,7 +545,7 @@
                 <button class="btn-secondary" id="btnNext" onclick="navigateRecord(1)">下一条 →</button>
             </div>
             <div class="nav-controls">
-                <button class="btn-secondary" onclick="toggleAllRecords()" title="折叠/展开所有卡片">全部折叠</button>
+                <button class="btn-secondary" onclick="toggleAllRecords()" title="折叠/展开所有卡片">全部折叠/展开</button>
                 <button class="btn-secondary" onclick="expandAllFields()">展开字段</button>
                 <button class="btn-secondary" onclick="collapseAllFields()">收起字段</button>
             </div>
@@ -775,33 +775,31 @@ function renderJsonTree(obj, path, depth) {
     if (Array.isArray(obj)) {
         if (obj.length === 0) return '<span class="tree-bracket">[]</span>';
 
-        const isOpen = depth < 1;
         const isLarge = obj.length > MAX_ARRAY_RENDER;
         const displayItems = isLarge ? obj.slice(0, MAX_ARRAY_RENDER) : obj;
 
         let childrenHtml = '';
         displayItems.forEach((item, idx) => {
             const isPrimitive = item === null || typeof item !== 'object';
-            const childOpen = depth + 1 < 1;
             childrenHtml += `<div class="tree-row">
                 ${isPrimitive
                     ? '<span class="tree-toggle-spacer"></span>'
-                    : `<span class="tree-toggle" onclick="toggleNode(this)">${childOpen ? '▼' : '▶'}</span>`}
+                    : `<span class="tree-toggle" onclick="toggleNode(this)">▶</span>`}
                 ${renderJsonTree(item, `${path}[${idx}]`, depth + 1)}
             </div>`;
         });
 
         if (isLarge) {
-            const remaining = obj.length - MAX_ARRAY_RENDER;
             childrenHtml += `<div style="margin-left:18px;color:var(--text-dim);font-style:italic;font-size:11px;padding:4px 0;">... 显示前 ${MAX_ARRAY_RENDER} 条，共 ${obj.length} 条</div>`;
         }
 
         const scrollClass = obj.length > 50 ? ' tree-array-scroll' : '';
 
+        // 数组内部内容始终可见，由父级 .tree-children 统一控制显隐
         return `
             <div>
                 <span class="tree-bracket">[</span><span class="tree-array-count">${obj.length}</span>
-                <div class="${scrollClass}" style="display:${isOpen?'block':'none'}">
+                <div class="${scrollClass}">
                     ${childrenHtml}
                 </div>
                 <span class="tree-bracket">]</span>
@@ -818,14 +816,13 @@ function renderJsonTree(obj, path, depth) {
     let entriesHtml = '';
     keys.forEach(k => {
         const val = obj[k];
-        const isPrimitive = val === null || typeof val !== 'object';
         const preview = getPreview(val);
 
+        // object 属性始终保留 toggle 按钮，因为 .tree-children / .tree-ellipsis 都存在，
+        // 收起后需要 toggle 来重新展开
         entriesHtml += `
             <div class="tree-row">
-                ${isPrimitive
-                    ? '<span class="tree-toggle-spacer"></span>'
-                    : `<span class="tree-toggle" onclick="toggleNode(this)">${isOpen ? '▼' : '▶'}</span>`}
+                <span class="tree-toggle" onclick="toggleNode(this)">${isOpen ? '▼' : '▶'}</span>
                 <span class="tree-key">"${escapeHtml(k)}"</span>:
                 <span class="tree-children" style="display:${isOpen?'inline':'none'}">
                     ${renderJsonTree(val, `${path}.${k}`, depth + 1)}
