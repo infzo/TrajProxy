@@ -1,0 +1,25 @@
+"...\n\n<tool_call>\n<function=get_weather>\n<parameter=location>\nBeijing\n</parameter>\n</function>\n</tool_call>..."
+
+{
+    "id": "chatcmpl-d28cba0f-367d-41e7-9863-e3c3b14e59a9",
+    # ...
+    "choices": [
+        {
+            "message": {
+                "role": "assistant",
+                "content": "Let me think about the weather.\nFirst, I will check the location.\n\nNow I will call the weather function.\n\n",
+                "tool_calls": [
+                    {
+                        "id": "call_ed57972ab7b1415baa617c51",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"location\": \"Beijing\"}"
+                        }
+                    }
+                ]
+            },
+            # ...
+        }
+    ]
+}
