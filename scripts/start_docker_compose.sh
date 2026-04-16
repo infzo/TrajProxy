@@ -1,16 +1,180 @@
 #!/bin/bash
 # Docker Compose 启动脚本
 # 使用 docker-compose 拉起所有服务容器（litellm、postgresdb、traj_proxy、prometheus）
+# 支持参数: start, stop, restart
 
-# 切换到 dockers/compose 目录
-cd "$(dirname "$0")/../dockers/compose"
+set -e
 
-# 停止所有服务
-docker-compose down
+# 获取操作参数，默认为 start
+ACTION="${1:-start}"
+
+# 切换到 docker-compose 目录
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+COMPOSE_DIR="${SCRIPT_DIR}/../dockers/compose"
+
+# 停止超时时间（秒）
+STOP_TIMEOUT=30
+
+# 显示帮助信息
+show_help() {
+    echo "用法: $0 [start|stop|restart]"
+    echo ""
+    echo "参数说明:"
+    echo "  start   - 启动所有服务（默认）"
+    echo "  stop    - 停止所有服务"
+    echo "  restart - 重启所有服务"
+    echo ""
+    echo "示例:"
+    echo "  $0              # 启动服务（默认）"
+    echo "  $0 start        # 启动服务"
+    echo "  $0 stop         # 停止服务"
+    echo "  $0 restart      # 重启服务"
+    echo ""
+    echo "说明:"
+    echo "  此脚本使用 docker-compose 管理以下服务:"
+    echo "    - nginx: 反向代理服务"
+    echo "    - litellm: LLM 代理服务"
+    echo "    - db: PostgreSQL 数据库"
+    echo "    - prometheus: 监控服务"
+    echo "    - traj_proxy: 核心代理服务"
+}
+
+# 验证参数有效性
+validate_action() {
+    if [[ ! "$ACTION" =~ ^(start|stop|restart)$ ]]; then
+        echo "错误: 无效的操作参数 '$ACTION'"
+        echo ""
+        show_help
+        exit 1
+    fi
+}
+
+# 显示配置信息
+show_config() {
+    echo "=== TrajProxy Docker Compose 启动脚本 ==="
+    echo "操作类型: ${ACTION}"
+    echo "Compose 目录: ${COMPOSE_DIR}"
+    echo "停止超时: ${STOP_TIMEOUT} 秒"
+    echo ""
+}
+
+# 切换到 compose 目录
+change_to_compose_dir() {
+    if [ ! -d "${COMPOSE_DIR}" ]; then
+        echo "错误: docker-compose 目录不存在: ${COMPOSE_DIR}"
+        exit 1
+    fi
+
+    echo "切换到目录: ${COMPOSE_DIR}"
+    cd "${COMPOSE_DIR}" || exit 1
+    echo ""
+}
+
+# 检查 docker-compose 文件
+check_compose_file() {
+    if [ ! -f "docker-compose.yml" ]; then
+        echo "错误: docker-compose.yml 文件不存在"
+        exit 1
+    fi
+}
+
+# 显示服务状态
+show_services_status() {
+    echo ""
+    echo "=== 服务状态 ==="
+    docker-compose ps
+    echo ""
+}
 
 # 启动所有服务
-docker-compose up -d
+start_service() {
+    echo "=== 启动 TrajProxy 服务 ==="
+    echo ""
 
-echo "=== TrajProxy 服务已启动 ==="
-echo "查看日志: docker-compose logs -f"
-echo "停止服务: docker-compose down"
+    # 检查 compose 文件
+    check_compose_file
+
+    # 启动服务
+    echo "启动所有服务..."
+    docker-compose up -d
+
+    # 显示服务状态
+    show_services_status
+
+    echo "=== TrajProxy 服务已启动 ==="
+    echo "查看日志: docker-compose logs -f"
+    echo "停止服务: $0 stop"
+    echo "重启服务: $0 restart"
+    echo "查看状态: docker-compose ps"
+}
+
+# 停止所有服务
+stop_service() {
+    echo "=== 停止 TrajProxy 服务 ==="
+    echo ""
+
+    # 检查 compose 文件
+    check_compose_file
+
+    # 停止服务
+    echo "停止所有服务..."
+    docker-compose down --timeout ${STOP_TIMEOUT}
+
+    echo ""
+    echo "=== TrajProxy 服务已停止 ==="
+    echo "说明: 容器已停止并删除，数据卷已保留"
+}
+
+# 重启所有服务
+restart_service() {
+    echo "=== 重启 TrajProxy 服务 ==="
+    echo ""
+
+    # 先停止服务
+    stop_service
+    echo ""
+
+    # 等待所有容器完全停止
+    echo "等待所有容器完全停止..."
+    local wait_time=0
+    while docker-compose ps -q 2>/dev/null | grep -q .; do
+        sleep 1
+        wait_time=$((wait_time + 1))
+        if [ $wait_time -ge ${STOP_TIMEOUT} ]; then
+            echo "警告: 等待超时"
+            break
+        fi
+    done
+    echo ""
+
+    # 再启动服务
+    start_service
+}
+
+# 主流程
+main() {
+    # 验证参数
+    validate_action
+
+    # 显示配置信息
+    show_config
+
+    # 切换到 compose 目录
+    change_to_compose_dir
+
+    # 根据操作类型执行相应函数
+    case "$ACTION" in
+        start)
+            start_service
+            ;;
+        stop)
+            stop_service
+            ;;
+        restart)
+            restart_service
+            ;;
+    esac
+}
+
+# 执行主流程
+main "$@"
