@@ -4,6 +4,56 @@
 
 ---
 
+## [0.1.5] - 2026-04-16
+
+### 新增功能
+- **归档功能**: 新增轨迹查询 API，支持历史数据归档与查询
+- **All-in-One 部署模式**: 支持 TITO 架构，提供一体化部署方案
+- **Jinja 模板支持**: TITO 模式支持自定义 Jinja 模板
+- **Docker 脚本增强**: 启动脚本支持 start/stop/restart 参数，提升部署灵活性
+- **Trajectory Viewer**: 新增轨迹回放查看器，支持可视化的历史轨迹重放
+- **CORS 支持**: 添加跨域资源共享支持，便于前端集成
+- **InferClient 配置**: 新增推理客户端配置项
+
+### 优化改进
+- **API 设计**: 优化 trajectories 接口为符合 RESTful 设计规范
+- **配置管理**: 新增配置示例文件（config.yaml.example、litellm.yaml.example、nginx.conf.example）
+- **部署文档**: 更新部署文档，反映启动脚本的新参数支持
+- **超时配置**: 优化超时配置逻辑
+- **日志输出**: 调整日志级别为 DEBUG，便于调试
+- **归档测试**: 优化归档测试脚本的日志检查机制
+
+### Bug 修复
+- **Prisma 引擎**: 构建时预生成 Prisma 引擎，支持离线部署环境
+- **Mermaid 图表**: 修复设计文档中 Mermaid 图表语法错误
+- **流式解析**: 清理流式 tool 解析冗余输出问题
+- **前缀测试**: 修复前缀测试用例
+- **推理异常**: 修复推理异常时后续相同 session-id 受影响的问题
+- **容器镜像**: 优化容器镜像命名
+- **allinone**: 修复 allinone 运行失败问题
+- **启动部署**: 优化启动部署流程
+
+### 文档更新
+- **API 文档**: 刷新 API 文档，修正 trajectories 接口路径
+- **数据库归档**: 新增数据库归档机制设计文档
+- **TITO 架构**: 新增 TITO 架构设计文档并合并 v1/v2 为统一版本
+- **文档一致性**: 刷新文档与代码一致性
+
+### 其他
+- **环境变量**: 添加 DATABASE_URL 环境变量配置
+- **目录结构**: 调整脚本目录结构
+- **测试用例**: 新增 Reasoning + Tool 组合场景测试用例 (F107, F108)
+
+### 影响范围
+- `traj_proxy/archive/` - 归档功能模块
+- `traj_proxy/serve/routes.py` - API 路由与 CORS 支持
+- `scripts/start_docker_*.sh` - Docker 启动脚本
+- `scripts/replay_trajectory_viewer.html` - 轨迹回放查看器
+- `docs/design/tito.md` - TITO 架构文档
+- `configs/*.example` - 配置示例文件
+
+---
+
 ## [0.1.3] - 2026-04-13
 
 ### 新增功能
