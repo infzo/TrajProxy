@@ -4,6 +4,20 @@
 
 ---
 
+## [0.1.6] - 2026-04-22
+
+### 优化改进
+- **TrajectoryViewer UI**: 更新界面标签名称（Server → SERVER_ADDRESS，Run ID → MY_JOB_NAME(Run ID)），默认服务器地址从 `http://localhost:12300` 改为 `http://localhost:80`
+
+### 文档更新
+- **文档命名**: 变更日志文件名改为大写 `RELEASE.md`
+
+### 影响范围
+- `scripts/replay_trajectory_viewer.html` - 轨迹回放查看器
+- `docs/RELEASE.md` - 变更日志
+
+---
+
 ## [0.1.5] - 2026-04-16
 
 ### 新增功能
