@@ -99,7 +99,7 @@ class Processor:
         # 加载 tokenizer
         if not self.tokenizer_path:
             raise ValueError("token_in_token_out=True 时，tokenizer_path 必须提供")
-        tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_path)
+        tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_path, trust_remote_code=True)
 
         # 推断 TITO 模板路径
         tito_template_path = self._get_tito_template_path()
