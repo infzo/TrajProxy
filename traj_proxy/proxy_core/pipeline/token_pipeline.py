@@ -24,6 +24,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# TITO 模式下与 completions API 不兼容的参数
+TITO_INCOMPATIBLE_PARAMS = {
+    "response_format",   # completions API 不支持
+    "logit_bias",        # token_id 映射不同，无法直接使用
+}
+
 
 class TokenPipeline(BasePipeline):
     """Token 模式管道
@@ -73,6 +79,23 @@ class TokenPipeline(BasePipeline):
         self.stream_builder = stream_builder
         self.parser = parser
         self.tokenizer_path = tokenizer_path
+
+    def _filter_params_for_tito(self, params: dict, context: ProcessContext) -> dict:
+        """过滤 TITO 不兼容参数，一次性记录警告日志
+
+        Args:
+            params: 原始请求参数
+            context: 处理上下文（用于日志）
+
+        Returns:
+            过滤后的参数
+        """
+        dropped = [k for k in params if k in TITO_INCOMPATIBLE_PARAMS]
+        if dropped:
+            logger.warning(
+                f"[{context.unique_id}] 以下参数不兼容 TITO 模式，已丢弃: {dropped}"
+            )
+        return {k: v for k, v in params.items() if k not in TITO_INCOMPATIBLE_PARAMS}
 
     async def process(
         self,
@@ -188,13 +211,17 @@ class TokenPipeline(BasePipeline):
             first_chunk_received = False
             infer_start_time = time.perf_counter()
 
+            # 过滤 TITO 不兼容参数
+            filtered_params = self._filter_params_for_tito(context.request_params, context)
+
             # 使用上下文管理器自动管理流式状态
             with self.parser:
                 # 阶段 3-5: 流式推理和响应
                 async for infer_chunk in self.infer_client.send_completion_stream(
                     prompt=prompt_input,
                     model=self.model,
-                    **context.request_params
+                    extra_headers=context.forward_headers,
+                    **filtered_params
                 ):
                     # 处理单个响应块
                     chunk = await self._process_stream_chunk(
@@ -284,10 +311,14 @@ class TokenPipeline(BasePipeline):
         """阶段 3: 推理"""
         logger.info(f"[{context.unique_id}] 发送 Infer 请求（Token 模式）")
 
+        # 过滤 TITO 不兼容参数
+        filtered_params = self._filter_params_for_tito(context.request_params, context)
+
         context.token_response = await self.infer_client.send_completion(
             prompt=context.token_ids,
             model=self.model,
-            **context.request_params
+            extra_headers=context.forward_headers,
+            **filtered_params
         )
 
         logger.info(f"[{context.unique_id}] Infer 请求完成")

@@ -46,16 +46,16 @@ def _merge_stream_tool_calls(tool_calls: List[Dict[str, Any]]) -> List[Dict[str,
                 "function": {"name": "", "arguments": ""}
             }
         # 更新 id 和 type
-        if tc.get("id"):
+        if tc.get("id", None):
             merged[idx]["id"] = tc["id"]
-        if tc.get("type"):
+        if tc.get("type", None):
             merged[idx]["type"] = tc["type"]
         # 合并 function
-        func = tc.get("function")
+        func = tc.get("function", None)
         if func:
-            if func.get("name"):
+            if func.get("name", None):
                 merged[idx]["function"]["name"] = func["name"]
-            if func.get("arguments"):
+            if func.get("arguments", None):
                 merged[idx]["function"]["arguments"] += func["arguments"]
 
     return list(merged.values())
@@ -113,6 +113,7 @@ class DirectPipeline(BasePipeline):
             context.raw_response = await self.infer_client.send_chat_completion(
                 messages=messages,
                 model=self.model,
+                extra_headers=context.forward_headers,
                 **context.request_params
             )
             context.inference_duration_ms = (time.perf_counter() - t0) * 1000
@@ -177,6 +178,7 @@ class DirectPipeline(BasePipeline):
             async for chunk in self.infer_client.send_chat_completion_stream(
                 messages=messages,
                 model=self.model,
+                extra_headers=context.forward_headers,
                 **context.request_params
             ):
                 # 记录TTFT（首Token时间）
@@ -217,11 +219,11 @@ class DirectPipeline(BasePipeline):
         # vLLM 在流式结束时发送一个只包含 usage 的 chunk
         if "usage" in chunk:
             usage = chunk["usage"]
-            if usage.get("prompt_tokens") is not None:
+            if usage.get("prompt_tokens", None) is not None:
                 context.prompt_tokens = usage["prompt_tokens"]
-            if usage.get("completion_tokens") is not None:
+            if usage.get("completion_tokens", None) is not None:
                 context.completion_tokens = usage["completion_tokens"]
-            if usage.get("total_tokens") is not None:
+            if usage.get("total_tokens", None) is not None:
                 context.total_tokens = usage["total_tokens"]
 
         if "choices" not in chunk or not chunk["choices"]:
@@ -253,9 +255,9 @@ class DirectPipeline(BasePipeline):
             fc = delta["function_call"]
             if context.stream_function_call is None:
                 context.stream_function_call = {"name": "", "arguments": ""}
-            if fc.get("name"):
+            if fc.get("name", None):
                 context.stream_function_call["name"] = fc["name"]
-            if fc.get("arguments"):
+            if fc.get("arguments", None):
                 context.stream_function_call["arguments"] += fc["arguments"]
 
         # 6. 累积 logprobs
@@ -271,7 +273,7 @@ class DirectPipeline(BasePipeline):
             context.stream_token_ids.extend(choice["token_ids"])
 
         # 8. 检查是否结束
-        finish_reason = choice.get("finish_reason")
+        finish_reason = choice.get("finish_reason", None)
         if finish_reason:
             context.stream_finished = True
             context.stream_finish_reason = finish_reason

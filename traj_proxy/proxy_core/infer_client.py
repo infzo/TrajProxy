@@ -92,10 +92,14 @@ class InferClient:
 
     # --- 核心请求逻辑 ---
 
-    async def _handle_request(self, url: str, request_body: dict) -> Dict[str, Any]:
+    async def _handle_request(self, url: str, request_body: dict, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """非流式请求处理，将 requests 同步调用转为异步执行"""
         session = await self._get_session()
         loop = asyncio.get_event_loop()
+
+        headers = self._build_common_headers()
+        if extra_headers:
+            headers.update(extra_headers)
 
         try:
             logger.debug(f"Infer 请求: {url}")
@@ -104,7 +108,7 @@ class InferClient:
                 lambda: session.post(
                     url,
                     json=request_body,
-                    headers=self._build_common_headers(),
+                    headers=headers,
                     timeout=self._timeout_config,
                     stream=False
                 )
@@ -123,10 +127,14 @@ class InferClient:
         except Exception as e:
             raise InferServiceError(f"Infer 内部异常: {str(e)}\n{traceback.format_exc()}")
 
-    async def _handle_stream_request(self, url: str, request_body: dict) -> AsyncIterator[Dict[str, Any]]:
+    async def _handle_stream_request(self, url: str, request_body: dict, extra_headers: Optional[Dict[str, str]] = None) -> AsyncIterator[Dict[str, Any]]:
         """流式请求处理，返回异步生成器"""
         session = await self._get_session()
         loop = asyncio.get_event_loop()
+
+        headers = self._build_common_headers()
+        if extra_headers:
+            headers.update(extra_headers)
 
         try:
             logger.debug(f"Infer 流式请求: {url}")
@@ -135,7 +143,7 @@ class InferClient:
                 lambda: session.post(
                     url,
                     json=request_body,
-                    headers=self._build_common_headers(),
+                    headers=headers,
                     timeout=self._timeout_config,
                     stream=True
                 )
@@ -181,64 +189,77 @@ class InferClient:
 
     # --- OpenAI Completions 接口 ---
 
-    async def send_completion(self, prompt: PromptInput, model: str, **kwargs) -> Dict[str, Any]:
+    async def send_completion(self, prompt: PromptInput, model: str, extra_headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
         url = f"{self.base_url}/completions"
         request_body = self._build_completion_body(prompt, model, stream=False, **kwargs)
-        return await self._handle_request(url, request_body)
+        return await self._handle_request(url, request_body, extra_headers)
 
-    async def send_completion_stream(self, prompt: PromptInput, model: str, **kwargs) -> AsyncIterator[Dict[str, Any]]:
+    async def send_completion_stream(self, prompt: PromptInput, model: str, extra_headers: Optional[Dict[str, str]] = None, **kwargs) -> AsyncIterator[Dict[str, Any]]:
         url = f"{self.base_url}/completions"
         request_body = self._build_completion_body(prompt, model, stream=True, **kwargs)
-        async for chunk in self._handle_stream_request(url, request_body):
+        async for chunk in self._handle_stream_request(url, request_body, extra_headers):
             yield chunk
 
     def _build_completion_body(self, prompt, model, stream, **kwargs):
-        """合并最新版本的 Completion 参数逻辑"""
+        """构建 Completion 请求体（黑名单透传模式）
+
+        已显式处理的参数不再通过 kwargs 透传，避免重复。
+        其余参数全部透传到推理服务。
+        """
+        # 已在 body 中显式处理的参数
+        handled_params = {"model", "prompt", "stream", "max_tokens", "temperature", "logprobs", "extra_body"}
+
         body = {
             "model": model,
             "prompt": prompt,
-            "max_tokens": kwargs.get("max_tokens") or 100,
+            "max_tokens": kwargs.get("max_tokens") if kwargs.get("max_tokens") is not None else 100,
             "temperature": kwargs.get("temperature") if kwargs.get("temperature") is not None else 0.7,
             "stream": stream,
-            "return_token_ids": True,
-            "logprobs": 1
+            "logprobs": kwargs.get("logprobs", 1),
+            "extra_body": kwargs.get("extra_body", {})
         }
-        # 补充最新接口中支持的额外参数
-        extra_params = ["top_p", "presence_penalty", "frequency_penalty", "n", "seed", "stop", "echo", "best_of"]
-        for p in extra_params:
-            if p in kwargs and kwargs[p] is not None:
-                body[p] = kwargs[p]
+        body["extra_body"].update({"return_token_ids": True}) # vLLM 扩展参数
+
+        # 透传所有未显式处理的参数
+        for k, v in kwargs.items():
+            if k not in handled_params and v is not None:
+                body[k] = v
+
         return body
 
     # --- OpenAI Chat Completions 接口 ---
 
-    async def send_chat_completion(self, messages: List[Dict[str, Any]], model: str, **kwargs) -> Dict[str, Any]:
+    async def send_chat_completion(self, messages: List[Dict[str, Any]], model: str, extra_headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
         url = f"{self.base_url}/chat/completions"
         request_body = self._build_chat_body(messages, model, stream=False, **kwargs)
-        return await self._handle_request(url, request_body)
+        return await self._handle_request(url, request_body, extra_headers)
 
-    async def send_chat_completion_stream(self, messages: List[Dict[str, Any]], model: str, **kwargs) -> AsyncIterator[Dict[str, Any]]:
+    async def send_chat_completion_stream(self, messages: List[Dict[str, Any]], model: str, extra_headers: Optional[Dict[str, str]] = None, **kwargs) -> AsyncIterator[Dict[str, Any]]:
         url = f"{self.base_url}/chat/completions"
         request_body = self._build_chat_body(messages, model, stream=True, **kwargs)
-        async for chunk in self._handle_stream_request(url, request_body):
+        async for chunk in self._handle_stream_request(url, request_body, extra_headers):
             yield chunk
 
     def _build_chat_body(self, messages, model, stream, **kwargs):
-        """合并最新版本的 Chat 参数逻辑"""
+        """构建 Chat 请求体（黑名单透传模式）
+
+        已在 body 中显式处理的参数不再通过 kwargs 透传，避免重复。
+        其余参数全部透传到推理服务。
+        """
+        # 已在 body 中显式处理的参数
+        handled_params = {"model", "messages", "stream"}
+
         body = {
-            "model": model, 
-            "messages": messages, 
+            "model": model,
+            "messages": messages,
             "stream": stream
         }
-        # 补充最新接口中更完整的 Chat 参数
-        optional_params = [
-            "max_tokens", "max_completion_tokens", "temperature", "top_p", 
-            "presence_penalty", "frequency_penalty", "tools", "tool_choice", 
-            "parallel_tool_calls", "stop", "n", "seed"
-        ]
-        for p in optional_params:
-            if p in kwargs and kwargs[p] is not None:
-                body[p] = kwargs[p]
+
+        # 透传所有未显式处理的参数
+        for k, v in kwargs.items():
+            if k not in handled_params and v is not None:
+                body[k] = v
+
         return body
 
     def __repr__(self) -> str:

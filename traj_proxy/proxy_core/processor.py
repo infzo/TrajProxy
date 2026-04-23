@@ -167,6 +167,7 @@ class Processor:
         request_id: str,
         session_id: Optional[str] = None,
         run_id: Optional[str] = None,
+        forward_headers: Optional[Dict[str, str]] = None,
         **request_params
     ) -> ProcessContext:
         """处理完整的非流式 LLM 请求
@@ -176,6 +177,7 @@ class Processor:
             request_id: 请求 ID
             session_id: 原始会话 ID（不再自动补充前缀）
             run_id: 运行 ID（可选）
+            forward_headers: 需要转发到推理服务的 header（可选）
             **request_params: 请求参数（如 max_tokens, temperature 等）
 
         Returns:
@@ -191,7 +193,8 @@ class Processor:
             run_id=run_id,
             messages=messages,
             request_params=request_params,
-            is_stream=False
+            is_stream=False,
+            forward_headers=forward_headers or {}
         )
 
         logger.info(
@@ -221,6 +224,7 @@ class Processor:
         session_id: Optional[str] = None,
         run_id: Optional[str] = None,
         context_holder: Optional[dict] = None,
+        forward_headers: Optional[Dict[str, str]] = None,
         **request_params
     ) -> AsyncIterator[Dict[str, Any]]:
         """处理完整的流式 LLM 请求
@@ -231,6 +235,7 @@ class Processor:
             session_id: 原始会话 ID（不再自动补充前缀）
             run_id: 运行 ID（可选）
             context_holder: 可选容器，流式完成后存储上下文
+            forward_headers: 需要转发到推理服务的 header（可选）
             **request_params: 请求参数
 
         Yields:
@@ -246,7 +251,8 @@ class Processor:
             run_id=run_id,
             messages=messages,
             request_params=request_params,
-            is_stream=True
+            is_stream=True,
+            forward_headers=forward_headers or {}
         )
 
         logger.info(

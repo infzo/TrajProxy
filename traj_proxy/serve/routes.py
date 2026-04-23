@@ -85,6 +85,37 @@ def _extract_actual_model(model: str) -> str:
     return model.strip()
 
 
+# 不应转发到推理服务的 header（HTTP 基础 + TrajProxy 内部）
+HEADER_BLACKLIST = {
+    # HTTP 基础 header（由 requests 库自动处理）
+    "host", "content-length", "content-type", "connection",
+    "accept", "accept-encoding", "user-agent",
+    # TrajProxy 内部使用
+    "authorization",      # 由 InferClient 独立管理
+    "x-run-id",           # 已用于模型路由
+    "x-session-id",       # 已用于会话存储
+}
+
+
+def _extract_forward_headers(request: Request) -> Dict[str, str]:
+    """
+    提取需要转发到推理服务的 header（黑名单模式）
+
+    转发所有不在黑名单中的 header，使推理服务可获取追踪信息等。
+
+    Args:
+        request: FastAPI 请求对象
+
+    Returns:
+        需要转发的 header 字典
+    """
+    forward_headers = {}
+    for key, value in request.headers.items():
+        if key.lower() not in HEADER_BLACKLIST:
+            forward_headers[key] = value
+    return forward_headers
+
+
 # ========== 聊天补全接口 ==========
 
 @chat_router.post("/chat/completions")
@@ -138,15 +169,15 @@ async def chat_completions(
         # 提取 run_id（优先级：路径参数 > x-run-id header > model 参数）
         final_run_id = _extract_run_id(model, x_run_id, run_id)
 
-        # 提取实际的 model_name
+        # 提取实际 model_name
         actual_model = _extract_actual_model(model)
 
-        # 其他请求参数
-        request_params = {}
-        for key in ["max_tokens", "max_completion_tokens", "temperature", "top_p", "presence_penalty", "frequency_penalty",
-                    "tools", "tool_choice", "parallel_tool_calls", "documents", "stream_options"]:
-            if key in body:
-                request_params[key] = body[key]
+        # 提取需要转发到推理服务的 header（黑名单模式）
+        forward_headers = _extract_forward_headers(request)
+
+        # 其他请求参数（黑名单模式：排除 model, messages, stream）
+        PARAM_BLACKLIST = {"model", "messages", "stream"}
+        request_params = {k: v for k, v in body.items() if k not in PARAM_BLACKLIST}
 
         # 生成 request_id（已在 try 外部生成）
 
@@ -186,6 +217,7 @@ async def chat_completions(
                         session_id=final_session_id,
                         run_id=final_run_id,
                         context_holder=context_holder,
+                        forward_headers=forward_headers,
                         **request_params
                     ):
                         # chunk 可能是 dict（OpenAI 格式），需要序列化为 SSE 格式
@@ -219,6 +251,7 @@ async def chat_completions(
                 request_id=request_id,
                 session_id=final_session_id,
                 run_id=final_run_id,
+                forward_headers=forward_headers,
                 **request_params
             )
 

@@ -87,7 +87,8 @@ class BasePipeline(ABC):
         messages: list,
         request_params: dict,
         is_stream: bool = False,
-        run_id: Optional[str] = None
+        run_id: Optional[str] = None,
+        forward_headers: Optional[Dict[str, str]] = None
     ) -> ProcessContext:
         """创建处理上下文
 
@@ -98,6 +99,7 @@ class BasePipeline(ABC):
             request_params: 请求参数
             is_stream: 是否流式请求
             run_id: 运行 ID（可选）
+            forward_headers: 需要转发到推理服务的 header（可选）
 
         Returns:
             初始化后的上下文
@@ -112,7 +114,8 @@ class BasePipeline(ABC):
             session_id=session_id,
             run_id=run_id,
             unique_id=unique_id,
-            is_stream=is_stream
+            is_stream=is_stream,
+            forward_headers=forward_headers or {}
         )
         context.start_time = datetime.now()
 

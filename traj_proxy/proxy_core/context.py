@@ -31,6 +31,9 @@ class ProcessContext:
     run_id: Optional[str] = None      # 运行ID，独立存储
     unique_id: Optional[str] = None   # 格式: {session_id},{req_id}
 
+    # ========== 需要转发的 header ==========
+    forward_headers: Dict[str, str] = field(default_factory=dict)  # 转发到推理服务的 header
+
     # ========== 阶段1: OpenAI Chat 格式 ==========
     # 便捷字段（保留用于快速访问）
     messages: List[Dict[str, Any]] = field(default_factory=list)
