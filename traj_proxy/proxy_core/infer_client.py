@@ -16,12 +16,39 @@ logger = get_logger(__name__)
 # prompt 参数类型：可以是 string 或 List[int] (token ids)
 PromptInput = Union[str, List[int]]
 
+
 class InferClient:
     """Infer 服务客户端 - 使用 requests 线程池实现 (兼容异步接口)
 
     融合了最新的接口规范，并针对 vLLM/Ascend NPU 环境下的网络不稳定性
     进行了优化。通过 requests 的 Retry 机制处理临时故障，使用线程池保持异步兼容。
     """
+
+    # Chat Completions 参数映射到 Completions 时的不兼容参数
+    _CHAT_TO_COMPLETION_INCOMPATIBLE = frozenset({
+        # 后端兼容性问题
+        "response_format",       # 后端可能不支持
+        "logit_bias",            # token_id 映射不同
+        # OpenAI 标准参数 - completions 不支持
+        "tools",                 # 工具调用
+        "tool_choice",           # 工具选择
+        "parallel_tool_calls",   # 并行工具调用
+        "reasoning_effort",      # 推理模型专用
+        # vLLM 扩展参数 - completions 不支持
+        "include_reasoning",     # 推理解析
+        "add_generation_prompt", # chat template
+        "continue_final_message",# chat template
+        "documents",             # RAG 文档
+        "chat_template",         # 自定义模板
+        "chat_template_kwargs",  # 模板参数
+        "mm_processor_kwargs",   # 多模态处理器
+        "bad_words",             # 屏蔽词列表
+    })
+
+    # 参数名映射（Chat -> Completion）
+    _CHAT_TO_COMPLETION_MAPPINGS = {
+        "max_completion_tokens": "max_tokens",
+    }
 
     def __init__(
         self,
@@ -83,12 +110,75 @@ class InferClient:
             "Content-Type": "application/json"
         }
 
+    def _transform_chat_params_to_completion(self, kwargs: dict, request_id: str = None) -> dict:
+        """将 Chat Completions 参数转换为 Completions 兼容格式
+
+        Args:
+            kwargs: 原始请求参数
+            request_id: 请求 ID（用于日志）
+
+        Returns:
+            转换后的参数
+        """
+        result = {}
+        dropped = []
+        mapped = []
+
+        for key, value in kwargs.items():
+            if key in self._CHAT_TO_COMPLETION_INCOMPATIBLE:
+                dropped.append(key)
+            elif key in self._CHAT_TO_COMPLETION_MAPPINGS:
+                new_key = self._CHAT_TO_COMPLETION_MAPPINGS[key]
+                result[new_key] = value
+                mapped.append(f"{key}->{new_key}")
+            else:
+                result[key] = value
+
+        # 记录日志
+        if dropped:
+            logger.warning(
+                f"[{request_id or 'unknown'}] Chat->Completion 参数不兼容，已丢弃: {dropped}"
+            )
+        if mapped:
+            logger.info(
+                f"[{request_id or 'unknown'}] Chat->Completion 参数已映射: {mapped}"
+            )
+
+        return result
+
     async def close(self):
         """释放资源"""
         if self._session:
             self._session.close()
             self._session = None
         self._executor.shutdown(wait=False)
+
+    async def __aenter__(self) -> "InferClient":
+        """异步上下文管理器入口"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口，自动释放资源"""
+        await self.close()
+        return False
+
+    # --- 异常处理 ---
+
+    def _wrap_request_error(self, e: Exception) -> None:
+        """统一的异常包装，将 requests 异常转换为业务异常
+
+        消除 _handle_request / _handle_stream_request 中的重复异常处理。
+        使用 raise ... from e 保持异常链可追溯。
+        """
+        if isinstance(e, requests.exceptions.ConnectTimeout):
+            raise InferTimeoutError(f"推理服务连接超时: {self.base_url}") from e
+        if isinstance(e, requests.exceptions.ReadTimeout):
+            raise InferTimeoutError(f"推理服务读取超时: {self.base_url}") from e
+        if isinstance(e, requests.exceptions.RequestException):
+            status_code = getattr(e.response, 'status_code', 'N/A')
+            error_text = getattr(e.response, 'text', str(e))
+            raise InferServiceError(f"Infer 请求失败 [{status_code}]: {error_text}") from e
+        raise InferServiceError(f"Infer 内部异常: {str(e)}\n{traceback.format_exc()}") from e
 
     # --- 核心请求逻辑 ---
 
@@ -116,16 +206,8 @@ class InferClient:
             response.raise_for_status()
             return response.json()
 
-        except requests.exceptions.ConnectTimeout:
-            raise InferTimeoutError(f"推理服务连接超时: {self.base_url}")
-        except requests.exceptions.ReadTimeout:
-            raise InferTimeoutError(f"推理服务读取超时: {self.base_url}")
-        except requests.exceptions.RequestException as e:
-            status_code = getattr(e.response, 'status_code', 'N/A')
-            error_text = getattr(e.response, 'text', str(e))
-            raise InferServiceError(f"Infer 请求失败 [{status_code}]: {error_text}")
         except Exception as e:
-            raise InferServiceError(f"Infer 内部异常: {str(e)}\n{traceback.format_exc()}")
+            self._wrap_request_error(e)
 
     async def _handle_stream_request(self, url: str, request_body: dict, extra_headers: Optional[Dict[str, str]] = None) -> AsyncIterator[Dict[str, Any]]:
         """流式请求处理，返回异步生成器"""
@@ -150,20 +232,11 @@ class InferClient:
             )
             response.raise_for_status()
 
-            # 直接 yield from 异步生成器
             async for chunk in self._async_stream_gen(response):
                 yield chunk
 
-        except requests.exceptions.ConnectTimeout:
-            raise InferTimeoutError(f"推理服务连接超时: {self.base_url}")
-        except requests.exceptions.ReadTimeout:
-            raise InferTimeoutError(f"推理服务读取超时: {self.base_url}")
-        except requests.exceptions.RequestException as e:
-            status_code = getattr(e.response, 'status_code', 'N/A')
-            error_text = getattr(e.response, 'text', str(e))
-            raise InferServiceError(f"Infer 请求失败 [{status_code}]: {error_text}")
         except Exception as e:
-            raise InferServiceError(f"Infer 内部异常: {str(e)}\n{traceback.format_exc()}")
+            self._wrap_request_error(e)
 
     async def _async_stream_gen(self, response: requests.Response) -> AsyncIterator[Dict[str, Any]]:
         """异步生成器：解析 SSE 流数据"""
@@ -189,39 +262,42 @@ class InferClient:
 
     # --- OpenAI Completions 接口 ---
 
-    async def send_completion(self, prompt: PromptInput, model: str, extra_headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
+    async def send_completion(self, prompt: PromptInput, model: str, extra_headers: Optional[Dict[str, str]] = None, request_id: str = None, **kwargs) -> Dict[str, Any]:
         url = f"{self.base_url}/completions"
-        request_body = self._build_completion_body(prompt, model, stream=False, **kwargs)
+        request_body = self._build_completion_body(prompt, model, stream=False, request_id=request_id, **kwargs)
         return await self._handle_request(url, request_body, extra_headers)
 
-    async def send_completion_stream(self, prompt: PromptInput, model: str, extra_headers: Optional[Dict[str, str]] = None, **kwargs) -> AsyncIterator[Dict[str, Any]]:
+    async def send_completion_stream(self, prompt: PromptInput, model: str, extra_headers: Optional[Dict[str, str]] = None, request_id: str = None, **kwargs) -> AsyncIterator[Dict[str, Any]]:
         url = f"{self.base_url}/completions"
-        request_body = self._build_completion_body(prompt, model, stream=True, **kwargs)
+        request_body = self._build_completion_body(prompt, model, stream=True, request_id=request_id, **kwargs)
         async for chunk in self._handle_stream_request(url, request_body, extra_headers):
             yield chunk
 
-    def _build_completion_body(self, prompt, model, stream, **kwargs):
+    def _build_completion_body(self, prompt, model, stream, request_id=None, **kwargs):
         """构建 Completion 请求体（黑名单透传模式）
 
         已显式处理的参数不再通过 kwargs 透传，避免重复。
-        其余参数全部透传到推理服务。
+        Chat Completions 特有参数会被自动过滤/映射。
         """
+        # 参数转换（Chat -> Completion）
+        transformed = self._transform_chat_params_to_completion(kwargs, request_id)
+
         # 已在 body 中显式处理的参数
         handled_params = {"model", "prompt", "stream", "max_tokens", "temperature", "logprobs", "extra_body"}
 
         body = {
             "model": model,
             "prompt": prompt,
-            "max_tokens": kwargs.get("max_tokens") if kwargs.get("max_tokens") is not None else 100,
-            "temperature": kwargs.get("temperature") if kwargs.get("temperature") is not None else 0.7,
+            "max_tokens": transformed.get("max_tokens") if transformed.get("max_tokens") is not None else 100,
+            "temperature": transformed.get("temperature") if transformed.get("temperature") is not None else 0.7,
             "stream": stream,
-            "logprobs": kwargs.get("logprobs", 1),
-            "extra_body": kwargs.get("extra_body", {})
+            "logprobs": transformed.get("logprobs", 1),
+            "extra_body": transformed.get("extra_body", {})
         }
         body["extra_body"].update({"return_token_ids": True}) # vLLM 扩展参数
 
         # 透传所有未显式处理的参数
-        for k, v in kwargs.items():
+        for k, v in transformed.items():
             if k not in handled_params and v is not None:
                 body[k] = v
 
