@@ -11,6 +11,9 @@ MOCK_INFER_SERVER="${_LAYER_DIR}/mock_infer_server.py"
 # TrajProxy可达的mock服务地址（Docker环境用host.docker.internal）
 MOCK_INFER_HOST="${MOCK_INFER_HOST:-host.docker.internal}"
 
+# 项目根目录 (tests/e2e/layers/proxy -> 项目根需要跳 4 级)
+PROJECT_ROOT="$(cd "${_LAYER_DIR}/../../../.." && pwd)"
+
 # ========================================
 # Mock推理服务辅助函数
 # ========================================
@@ -131,4 +134,158 @@ print(f"BODY_JSON:{json.dumps(body, ensure_ascii=False)}")
 PYEOF
 
     rm -f "$tmpfile"
+}
+
+# ========================================
+# Tokenizer 数据库存储辅助函数
+# ========================================
+
+# 获取测试用的数据库 URL
+# 优先级: TEST_DATABASE_URL 环境变量 > Docker 默认连接
+get_test_db_url() {
+    if [ -n "${TEST_DATABASE_URL:-}" ]; then
+        echo "$TEST_DATABASE_URL"
+    else
+        # Docker 环境默认数据库连接
+        echo "postgresql://llmproxy:dbpassword9090@127.0.0.1:5432/traj_proxy"
+    fi
+}
+
+# 上传 tokenizer 到数据库
+# 参数: $1 - name (如 "test/mock-tokenizer")
+#       $2 - local_path (本地 tokenizer 目录)
+# 返回: 0 成功, 1 失败
+# 说明: 数据库连接从 TEST_DATABASE_URL 或默认 Docker 连接读取
+upload_tokenizer() {
+    local name="$1"
+    local local_path="$2"
+    local db_url
+    db_url=$(get_test_db_url)
+
+    log_info "上传 tokenizer: ${name} <- ${local_path}"
+
+    local result
+    # 使用 perl alarm 实现超时保护（macOS 没有 timeout 命令）
+    result=$(perl -e 'alarm 30; exec @ARGV' -- \
+        python3 "${PROJECT_ROOT}/scripts/manage_tokenizer.py" upload \
+        --name "$name" \
+        --path "$local_path" \
+        --db-url "$db_url" 2>&1)
+
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ] && echo "$result" | grep -q "上传成功"; then
+        log_success "tokenizer 上传成功: ${name}"
+        echo "$result"
+        return 0
+    elif [ $exit_code -eq 142 ]; then
+        # SIGALRM (142 = 128 + 14)，表示超时
+        log_error "tokenizer 上传超时: ${name}（数据库连接超时）"
+        echo "$result"
+        return 1
+    else
+        log_error "tokenizer 上传失败: ${name}"
+        echo "$result"
+        return 1
+    fi
+}
+
+# 列出数据库中的 tokenizer
+# 输出: JSON 格式的列表结果
+list_tokenizers() {
+    local db_url
+    db_url=$(get_test_db_url)
+    # 使用 perl alarm 实现超时保护（macOS 没有 timeout 命令）
+    perl -e 'alarm 30; exec @ARGV' -- \
+        python3 "${PROJECT_ROOT}/scripts/manage_tokenizer.py" list \
+        --db-url "$db_url" 2>&1
+}
+
+# 删除数据库中的 tokenizer
+# 参数: $1 - name
+# 返回: 0 成功, 1 失败
+delete_tokenizer() {
+    local name="$1"
+    local db_url
+    db_url=$(get_test_db_url)
+
+    log_info "删除 tokenizer: ${name}"
+
+    local result
+    # 使用 perl alarm 实现超时保护（macOS 没有 timeout 命令）
+    result=$(perl -e 'alarm 30; exec @ARGV' -- \
+        python3 "${PROJECT_ROOT}/scripts/manage_tokenizer.py" delete \
+        --name "$name" \
+        --db-url "$db_url" 2>&1)
+
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ] && echo "$result" | grep -q "删除成功"; then
+        log_success "tokenizer 删除成功: ${name}"
+        return 0
+    elif [ $exit_code -eq 142 ]; then
+        # SIGALRM (142 = 128 + 14)，表示超时
+        log_error "tokenizer 删除超时: ${name}（数据库连接超时）"
+        echo "$result"
+        return 1
+    else
+        log_error "tokenizer 删除失败: ${name}"
+        echo "$result"
+        return 1
+    fi
+}
+
+# 检查 tokenizer 是否存在于数据库
+# 参数: $1 - name
+# 返回: 0 存在, 1 不存在
+tokenizer_exists_in_db() {
+    local name="$1"
+    local list_output
+    list_output=$(list_tokenizers)
+
+    if echo "$list_output" | grep -q "$name"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 创建最小测试 tokenizer 目录
+# 参数: $1 - 输出目录路径
+# 返回: tokenizer 目录路径 (stdout)，日志输出到 stderr
+# 说明: 从 models/Qwen/Qwen3.5-2B-TITO 复制真实 tokenizer 文件
+create_minimal_test_tokenizer() {
+    local output_dir="$1"
+    local tokenizer_dir="${output_dir}/test-tokenizer"
+    local source_tokenizer="${PROJECT_ROOT}/models/Qwen/Qwen3.5-2B-TITO"
+
+    log_info "创建测试 tokenizer: ${tokenizer_dir}" >&2
+
+    # 检查源 tokenizer 是否存在
+    if [ ! -d "$source_tokenizer" ]; then
+        log_error "源 tokenizer 不存在: ${source_tokenizer}" >&2
+        return 1
+    fi
+
+    # 创建目标目录
+    mkdir -p "$tokenizer_dir"
+
+    # 复制必要的 tokenizer 文件
+    cp "${source_tokenizer}/tokenizer.json" "$tokenizer_dir/" 2>/dev/null || true
+    cp "${source_tokenizer}/tokenizer_config.json" "$tokenizer_dir/" 2>/dev/null || true
+    cp "${source_tokenizer}/special_tokens_map.json" "$tokenizer_dir/" 2>/dev/null || true
+    cp "${source_tokenizer}/merges.txt" "$tokenizer_dir/" 2>/dev/null || true
+    cp "${source_tokenizer}/vocab.json" "$tokenizer_dir/" 2>/dev/null || true
+    cp "${source_tokenizer}/config.json" "$tokenizer_dir/" 2>/dev/null || true
+    cp "${source_tokenizer}/preprocessor_config.json" "$tokenizer_dir/" 2>/dev/null || true
+    cp "${source_tokenizer}/generation_config.json" "$tokenizer_dir/" 2>/dev/null || true
+
+    # 验证必要文件存在
+    if [ ! -f "${tokenizer_dir}/tokenizer.json" ]; then
+        log_error "tokenizer.json 复制失败" >&2
+        return 1
+    fi
+
+    log_success "测试 tokenizer 创建完成: ${tokenizer_dir}" >&2
+    echo "$tokenizer_dir"
 }

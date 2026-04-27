@@ -17,7 +17,7 @@ TOKEN_STREAM_TEST_BASE_URL="${BASE_URL}"
 TOKEN_STREAM_TEST_MODEL_NAME="token-stream-test-model"
 TOKEN_STREAM_TEST_RUN_ID="run-${SCENARIO_ID}"
 TOKEN_STREAM_TEST_SESSION_ID="session-${SCENARIO_ID}-$(date +%s%N | md5sum | head -c 8)"
-TOKEN_STREAM_TEST_TOKENIZER_PATH="Qwen/Qwen3.5-2B"
+TOKEN_STREAM_TEST_TOKENIZER_PATH="Qwen/Qwen3.5-2B-TITO"
 
 # 步骤 1: 注册模型（带 run_id，开启 token_in_token_out）
 log_step "步骤 1: 注册模型（run_id: ${TOKEN_STREAM_TEST_RUN_ID}, token_in_token_out: true）"

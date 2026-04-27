@@ -95,7 +95,6 @@ services:
       - "12300-12320:12300-12320"
     volumes:
       - ./configs/config.yaml:/app/configs/config.yaml
-      - ../../models:/app/models
       - ../../traj_proxy:/app/traj_proxy
       - ../../archives:/data/archives
       - ../../logs:/app/logs

@@ -17,7 +17,7 @@ TOOL_STREAM_TEST_BASE_URL="${BASE_URL}"
 TOOL_STREAM_TEST_MODEL_NAME="tool-stream-test-model"
 TOOL_STREAM_TEST_RUN_ID="run-${SCENARIO_ID}"
 TOOL_STREAM_TEST_SESSION_ID="session-${SCENARIO_ID}-$(date +%s%N | md5sum | head -c 8)"
-TOOL_STREAM_TEST_TOKENIZER_PATH="Qwen/Qwen3.5-2B"
+TOOL_STREAM_TEST_TOKENIZER_PATH="Qwen/Qwen3.5-2B-TITO"
 TOOL_STREAM_TEST_TOOL_PARSER="qwen3_coder"
 
 # 步骤 1: 注册模型（带 run_id、tool_parser 和 token_in_token_out）

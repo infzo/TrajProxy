@@ -266,7 +266,7 @@ async def _archive_partition(
     # 1. 查询分区记录数
     async with conn.cursor() as cur:
         await cur.execute(f"SELECT COUNT(*) FROM public.{partition_name}")
-        count = (await cur.fetchone())[0]
+        count = (await cur.fetchone())["count"]
 
     if count == 0:
         logger.info(f"  分区为空，跳过导出")

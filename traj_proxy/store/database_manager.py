@@ -11,6 +11,7 @@ import traceback
 from typing import Optional
 
 from psycopg_pool import AsyncConnectionPool
+from psycopg.rows import dict_row
 
 from traj_proxy.exceptions import DatabaseError
 from traj_proxy.utils.logger import get_logger
@@ -54,7 +55,8 @@ class DatabaseManager:
                 conninfo=self.db_url,
                 min_size=self.pool_config["min_size"],
                 max_size=self.pool_config["max_size"],
-                timeout=self.pool_config["timeout"]
+                timeout=self.pool_config["timeout"],
+                kwargs={"row_factory": dict_row}
             )
             # 显式打开连接池
             logger.info("DatabaseManager: 正在打开连接池...")

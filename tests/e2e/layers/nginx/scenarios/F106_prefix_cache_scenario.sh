@@ -17,7 +17,7 @@ CACHE_TEST_BASE_URL="${BASE_URL}"
 CACHE_TEST_MODEL_NAME="prefix-cache-test-model"
 CACHE_TEST_RUN_ID="run-${SCENARIO_ID}"
 CACHE_TEST_SESSION_ID="session-${SCENARIO_ID}-$(date +%s%N | md5sum | head -c 8)"
-CACHE_TEST_TOKENIZER_PATH="Qwen/Qwen3.5-2B"
+CACHE_TEST_TOKENIZER_PATH="Qwen/Qwen3.5-2B-TITO"
 
 # ========== 步骤 1: 注册模型 ==========
 

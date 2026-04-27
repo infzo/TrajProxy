@@ -101,11 +101,11 @@ async def archive_details(
             print(f"\n处理分区: {partition_name}（{month_start.date()} ~ {month_end.date()}）")
 
             # 2. 查询该分区关联的 unique_id（用于更新 metadata）
-            async with conn.cursor() as cur:
+            async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(f"""
                     SELECT COUNT(*) FROM public.{partition_name}
                 """)
-                count = (await cur.fetchone())[0]
+                count = (await cur.fetchone())["count"]
 
             if count == 0:
                 print(f"  分区为空，跳过")

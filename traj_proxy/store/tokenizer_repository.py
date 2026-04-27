@@ -31,11 +31,12 @@ class TokenizerRepository:
             tokenizer 信息列表，每项包含 name, size, file_count, created_at
         """
         async with self._db_manager.pool.connection() as conn:
-            rows = await conn.execute(
+            result = await conn.execute(
                 "SELECT name, size, file_count, created_at "
                 "FROM tokenizer_packages ORDER BY name"
             )
-            return [dict(row) for row in rows.fetchall()]
+            rows = await result.fetchall()
+            return [dict(row) for row in rows]
 
     async def exists(self, name: str) -> bool:
         """检查 tokenizer 是否存在
@@ -47,11 +48,12 @@ class TokenizerRepository:
             是否存在
         """
         async with self._db_manager.pool.connection() as conn:
-            row = await conn.execute(
+            result = await conn.execute(
                 "SELECT 1 FROM tokenizer_packages WHERE name = %s",
                 (name,)
             )
-            return row.fetchone() is not None
+            row = await result.fetchone()
+            return row is not None
 
     async def download_to_local(self, name: str, local_dir: str) -> str:
         """从数据库下载 tokenizer 并解压到本地
@@ -88,13 +90,17 @@ class TokenizerRepository:
                         "SELECT content FROM tokenizer_packages WHERE name = %s",
                         (name,)
                     )
-                    result = row.fetchone()
+                    result = await row.fetchone()
 
                 if not result:
                     raise ValueError(f"tokenizer '{name}' 不存在于数据库中")
 
+                content = result.get("content")
+                if not content:
+                    raise ValueError(f"tokenizer '{name}' 内容为空")
+
                 # 解压到目标目录
-                tar_buffer = BytesIO(bytes(result["content"]))
+                tar_buffer = BytesIO(bytes(content))
                 os.makedirs(target_path, exist_ok=True)
                 with tarfile.open(fileobj=tar_buffer, mode="r:gz") as tar:
                     # 安全检查：防止路径穿越
@@ -102,6 +108,11 @@ class TokenizerRepository:
                         if member.name.startswith('/') or '..' in member.name:
                             raise ValueError(f"不安全的压缩包路径: {member.name}")
                     tar.extractall(path=target_path)
+
+                # 验证必要文件存在
+                tokenizer_json = os.path.join(target_path, "tokenizer.json")
+                if not os.path.exists(tokenizer_json):
+                    raise ValueError(f"tokenizer '{name}' 解压后缺少 tokenizer.json")
 
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)

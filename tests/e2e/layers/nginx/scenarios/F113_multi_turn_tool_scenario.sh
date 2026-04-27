@@ -18,7 +18,7 @@ TOOL_TEST_BASE_URL="${BASE_URL}"
 TOOL_TEST_MODEL_NAME="multi-turn-tool-test-model"
 TOOL_TEST_RUN_ID="run-${SCENARIO_ID}"
 TOOL_TEST_SESSION_ID="session-${SCENARIO_ID}-$(date +%s%N | md5sum | head -c 8)"
-TOOL_TEST_TOKENIZER_PATH="Qwen/Qwen3.5-2B"
+TOOL_TEST_TOKENIZER_PATH="Qwen/Qwen3.5-2B-TITO"
 TOOL_TEST_TOOL_PARSER="qwen3_coder"
 
 # ========== 步骤 1: 注册模型 ==========
