@@ -10,6 +10,7 @@ from urllib3.util.retry import Retry
 
 from traj_proxy.exceptions import InferServiceError, InferTimeoutError
 from traj_proxy.utils.logger import get_logger
+from traj_proxy.utils.config import get_infer_client_config
 
 logger = get_logger(__name__)
 
@@ -58,9 +59,14 @@ class InferClient:
         timeout: float = 600.0,
         connect_timeout: float = 60.0,
         max_connections: int = 1000,
+        max_retries: Optional[int] = None,
         **kwargs
     ):
-        """初始化 InferClient"""
+        """初始化 InferClient
+
+        参数:
+            max_retries: 请求失败重试次数，为 None 时从配置文件读取
+        """
         if base_url is None or api_key is None:
             raise ValueError("InferClient base_url 和 api_key 必须提供")
 
@@ -70,10 +76,17 @@ class InferClient:
         # requests 专用配置 (连接超时, 读取超时)
         self._timeout_config = (connect_timeout, timeout)
         self._pool_size = max_connections
-        
+
+        # 重试次数：优先使用传入参数，否则从配置文件读取
+        if max_retries is None:
+            config = get_infer_client_config()
+            self._max_retries = config.get("max_retries", 2)
+        else:
+            self._max_retries = max_retries
+
         self._session: Optional[requests.Session] = None
         self._client_lock = asyncio.Lock()
-        
+
         # 使用线程池执行同步调用，避免阻塞异步事件循环
         self._executor = ThreadPoolExecutor(max_workers=max_connections)
 
@@ -89,7 +102,7 @@ class InferClient:
                 self._session = requests.Session()
                 # 鲁棒重试策略：针对 502/503/504 进行自动重试
                 retry_strategy = Retry(
-                    total=2,
+                    total=self._max_retries,
                     backoff_factor=1,
                     status_forcelist=[502, 503, 504],
                     allowed_methods=["POST"]

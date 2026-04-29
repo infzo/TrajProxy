@@ -57,6 +57,7 @@ infer_client:
   connect_timeout: 60       # 连接超时（秒）
   read_timeout: 600         # 读取超时（秒）
   max_connections: 1000     # 最大连接数
+  max_retries: 2            # 请求失败重试次数（针对 502/503/504 错误）
 
 # 归档配置（元数据表 + 详情表架构）
 archive:

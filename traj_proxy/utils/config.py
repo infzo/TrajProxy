@@ -186,10 +186,11 @@ def get_infer_client_config() -> Dict:
     获取 InferClient 配置
 
     返回:
-        infer_client 配置字典，包含 connect_timeout, read_timeout, max_connections
+        infer_client 配置字典，包含 connect_timeout, read_timeout, max_connections, max_retries
     """
     return get_config().get("infer_client", {
         "connect_timeout": 60,
         "read_timeout": 600,
-        "max_connections": 1000
+        "max_connections": 1000,
+        "max_retries": 2
     })
