@@ -451,7 +451,6 @@
         border-radius: var(--radius-sm);
         padding: 10px 14px;
         margin-bottom: 10px;
-        position: relative;
     }
     .thinking-header {
         display: flex;
@@ -473,15 +472,14 @@
         overflow-y: auto;
     }
     .thinking-toggle {
-        position: absolute;
-        top: 8px;
-        right: 8px;
+        display: block;
+        margin-top: 6px;
         background: none;
         border: 1px solid rgba(139, 92, 246, 0.3);
         color: #a78bfa;
-        padding: 2px 8px;
-        border-radius: 3px;
-        font-size: 10px;
+        padding: 2px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 11px;
         cursor: pointer;
     }
     .thinking-toggle:hover { background: rgba(139, 92, 246, 0.15); }
