@@ -739,7 +739,8 @@
             <input type="text" id="serverUrl" value="http://localhost:80" placeholder="API Endpoint" style="width: 220px;">
 
             <label>MY_JOB_NAME(Run ID)</label>
-            <input type="text" id="runId" placeholder="e.g. run-123" style="width: 160px;">
+            <input type="text" id="runId" placeholder="点击选择或输入" style="width: 160px;" list="runIdList" onclick="loadRunIdOptions()" onfocus="loadRunIdOptions()">
+            <datalist id="runIdList"></datalist>
 
             <button class="btn-primary" id="btnFetch" onclick="fetchSessions()">
                 <span>&#128269;</span> 查询
@@ -893,6 +894,58 @@ async function apiGet(path) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
     return resp.json();
+}
+
+/**
+ * 加载 run_id 选项列表
+ * 从 /models 接口获取所有模型，提取 run_id
+ */
+async function loadRunIdOptions() {
+    const datalist = document.getElementById('runIdList');
+
+    // 如果已经加载过，不重复加载
+    if (datalist.children.length > 0) return;
+
+    try {
+        serverUrl = document.getElementById('serverUrl').value.replace(/\/+$/, '');
+        if (!serverUrl) {
+            showToast('请先填写 SERVER_ADDRESS', 'error');
+            return;
+        }
+
+        // 使用管理 API 获取模型列表（包含详细信息）
+        const data = await apiGet('/models');
+        const models = data.models || [];
+
+        // 提取 run_id 并收集信息
+        const runIdMap = new Map(); // run_id -> { count, latest_model }
+        models.forEach(m => {
+            const runId = m.run_id;
+            if (runId) {
+                if (!runIdMap.has(runId)) {
+                    runIdMap.set(runId, { count: 0, latestModel: m.model_name });
+                }
+                const info = runIdMap.get(runId);
+                info.count++;
+            }
+        });
+
+        // 转换为数组并按 run_id 倒序排列（近似于最新在前）
+        const runIds = Array.from(runIdMap.keys()).sort((a, b) => b.localeCompare(a));
+
+        // 填充 datalist
+        datalist.innerHTML = runIds.map(id => {
+            const info = runIdMap.get(id);
+            return `<option value="${escapeHtml(id)}">${info.count} 个模型</option>`;
+        }).join('');
+
+        if (runIds.length === 0) {
+            showToast('未找到已注册的 Run ID', 'info');
+        }
+    } catch (e) {
+        console.error('加载 Run ID 列表失败:', e);
+        // 静默失败，不影响用户手动输入
+    }
 }
 
 // ==================== Logic: Sessions ====================
