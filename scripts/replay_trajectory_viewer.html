@@ -157,6 +157,22 @@
     }
     .sidebar-title { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; }
 
+    .sidebar-search {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .sidebar-search input {
+        width: 100%;
+        background: var(--bg-input);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+    }
+    .sidebar-search input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+    .sidebar-search input::placeholder { color: var(--text-dim); }
+
     .session-list { flex: 1; overflow-y: auto; }
 
     .session-item {
@@ -597,6 +613,9 @@
             <span class="sidebar-title">Sessions</span>
             <span class="badge badge-primary" id="sessionCount" style="display:none">0</span>
         </div>
+        <div class="sidebar-search">
+            <input type="text" id="sessionSearch" placeholder="搜索 Session ID..." oninput="filterSessions()">
+        </div>
         <div class="session-list" id="sessionList">
             <div class="empty-state">
                 <div class="empty-icon">&#128193;</div>
@@ -736,7 +755,7 @@ async function fetchSessions() {
         sessions.sort((a, b) => (b.last_request_time || '').localeCompare(a.last_request_time || ''));
 
         listEl.innerHTML = sessions.map((s, i) => `
-            <div class="session-item" data-idx="${i}" onclick="selectSession(${i})">
+            <div class="session-item" data-idx="${i}" data-session-id="${escapeHtml(s.session_id)}" onclick="selectSession(${i})">
                 <div class="session-id">${escapeHtml(s.session_id)}</div>
                 <div class="session-meta">
                     <span>${s.record_count} 记录</span>
@@ -746,10 +765,38 @@ async function fetchSessions() {
         `).join('');
 
         window._sessions = sessions;
+        document.getElementById('sessionSearch').value = ''; // 清空搜索框
         showToast(`加载成功: ${sessions.length} 个 Sessions`, 'success');
     } catch (e) {
         listEl.innerHTML = `<div style="padding:20px;color:var(--danger);text-align:center">请求失败: ${escapeHtml(e.message)}</div>`;
         showToast('查询失败', 'error');
+    }
+}
+
+/**
+ * 过滤 Sessions 列表
+ */
+function filterSessions() {
+    const keyword = document.getElementById('sessionSearch').value.trim().toLowerCase();
+    const items = document.querySelectorAll('.session-item');
+
+    let visibleCount = 0;
+    items.forEach(item => {
+        const sessionId = item.getAttribute('data-session-id').toLowerCase();
+        if (!keyword || sessionId.includes(keyword)) {
+            item.style.display = '';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+
+    // 更新 badge 显示匹配数量
+    const badge = document.getElementById('sessionCount');
+    if (keyword && visibleCount !== window._sessions.length) {
+        badge.textContent = `${visibleCount}/${window._sessions.length}`;
+    } else if (window._sessions) {
+        badge.textContent = window._sessions.length;
     }
 }
 
@@ -1000,6 +1047,7 @@ function scrollToRecord(idx) {
 
 function clearAll() {
     document.getElementById('runId').value = '';
+    document.getElementById('sessionSearch').value = '';
     document.getElementById('sessionList').innerHTML = '<div class="empty-state"><div class="empty-icon">&#128193;</div><div class="empty-text">输入 MY_JOB_NAME(Run ID) 开始查询</div></div>';
     document.getElementById('recordList').innerHTML = '<div class="empty-state"><div class="empty-icon">&#128200;</div><div class="empty-text">在左侧选择 Session 查看轨迹详情</div></div>';
     document.getElementById('sessionCount').style.display = 'none';
