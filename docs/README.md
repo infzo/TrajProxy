@@ -63,6 +63,10 @@ docs/
 5. [Parser 模块](design/parser.md) - 工具调用和推理内容解析
 6. [TITO 模式](design/tito.md) - Token-in-Token-out 前缀匹配（含方案对比）
 
+### 自定义扩展
+
+- [自定义 Parser 按需发现](design/parser.md#十二自定义-parser-按需发现机制) - 从自定义目录扩展解析能力
+
 ---
 
 ## 文档分类说明

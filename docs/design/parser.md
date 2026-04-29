@@ -188,7 +188,9 @@ class DeltaMessage:
 | `deepseek_v31` | DeepSeekV31ToolParser | Unicode 标记变体 |
 | `deepseek_v32` | DeepSeekV32ToolParser | DSML 格式 `<｜DSML｜>` |
 | `qwen3_coder` | Qwen3CoderToolParser | `toral`/`Ranchi` 边界 + XML |
+| `qwen3_xml` | Qwen3XMLToolParser | Qwen3 XML 格式 |
 | `qwen_xml` | QwenXMLToolParser | `ournemouth`/`Ranchi` + XML |
+| `hermes` | Hermes2ProToolParser | Hermes 格式，使用特殊标记 |
 | `glm45` | GLM45ToolParser | GLM 格式 |
 | `glm47` | GLM47ToolParser | GLM 格式 |
 | `llama3_json` | Llama3JsonParser | JSON 格式 |
@@ -777,3 +779,119 @@ class MyCustomReasoningParser(ReasoningParser):
         # 自定义流式解析逻辑
         pass
 ```
+
+---
+
+## 十二、自定义 Parser 按需发现机制
+
+TrajProxy 支持从自定义目录按需发现和加载 Parser，无需修改代码即可扩展解析能力。
+
+### 12.1 配置方式
+
+在 `config.yaml` 中配置自定义 Parser 目录：
+
+```yaml
+# 自定义 parser 目录路径
+custom_parsers_dir: /app/custom_parsers
+```
+
+**本地开发配置：**
+
+```yaml
+custom_parsers_dir: ./custom_parsers
+```
+
+### 12.2 目录结构
+
+自定义 Parser 目录需按以下结构组织：
+
+```
+custom_parsers/
+  tool_parsers/           # 自定义工具解析器目录
+    my_tool_parser.py     # 文件名即为 parser 名称
+    another_parser.py
+  reasoning_parsers/      # 自定义推理解析器目录
+    my_reasoning_parser.py
+```
+
+**命名规则：**
+
+- Tool Parser 文件放在 `tool_parsers/` 目录下
+- Reasoning Parser 文件放在 `reasoning_parsers/` 目录下
+- 文件名即为 parser 名称（如 `my_parser.py` → `"my_parser"`）
+
+### 12.3 按需加载流程
+
+当请求使用未注册的 parser 时，ParserManager 会自动从自定义目录查找并加载：
+
+1. 收到 parser 名称请求（如注册模型时指定 `tool_parser: "my_custom_parser"`）
+2. 先查询默认注册表（内置 parser）
+3. 若未找到，从 `custom_parsers/tool_parsers/` 目录查找同名 `.py` 文件
+4. 动态加载模块，查找并注册 ToolParser/ReasoningParser 子类
+5. 缓存注册结果，后续请求直接使用
+
+### 12.4 使用示例
+
+**步骤 1：创建自定义 Parser 文件**
+
+创建 `custom_parsers/tool_parsers/my_tool_parser.py`：
+
+```python
+from vllm.tool_parsers.abstract_tool_parser import ToolParser
+from vllm.entrypoints.openai.chat_completion.protocol import (
+    ChatCompletionRequest,
+    ExtractedToolCallInformation,
+)
+
+class MyToolParser(ToolParser):
+    """自定义工具解析器"""
+    
+    def extract_tool_calls(
+        self,
+        model_output: str,
+        request: ChatCompletionRequest,
+    ) -> ExtractedToolCallInformation:
+        # 实现自定义解析逻辑
+        # 返回 ExtractedToolCallInformation
+        pass
+    
+    def extract_tool_calls_streaming(
+        self,
+        previous_text: str,
+        current_text: str,
+        delta_text: str,
+        previous_token_ids,
+        current_token_ids,
+        delta_token_ids,
+        request: ChatCompletionRequest,
+    ):
+        # 实现自定义流式解析逻辑
+        pass
+```
+
+**步骤 2：注册模型时指定自定义 parser**
+
+```python
+# 注册模型（使用自定义 parser）
+curl -X POST 'http://localhost:12300/models/register' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_name": "my-model",
+    "url": "http://inference-server:8000/v1",
+    "api_key": "sk-xxx",
+    "tokenizer_path": "Qwen/Qwen3.5-2B",
+    "tool_parser": "my_tool_parser",  # 自定义 parser 名称
+    "token_in_token_out": true
+  }'
+```
+
+**步骤 3：发送请求**
+
+首次请求时，系统自动发现并加载 `my_tool_parser.py`，后续请求直接使用缓存。
+
+### 12.5 注意事项
+
+1. **类定义要求**：Parser 类必须继承 `ToolParser` 或 `ReasoningParser` 基类
+2. **模块归属检查**：只注册在当前模块中定义的类（通过 `__module__` 属性检查），避免误注册导入的基类
+3. **命名一致性**：文件名与 parser 名称必须一致
+4. **错误处理**：加载失败会记录错误日志，返回 None

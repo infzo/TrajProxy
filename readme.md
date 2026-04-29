@@ -9,8 +9,9 @@ TrajProxy 是一个 LLM 请求代理系统，提供 OpenAI 兼容 API、Token-in
 - **动态模型管理** - 运行时注册/删除模型，跨 Worker 自动同步
 - **请求轨迹记录** - 完整的对话历史存储
 - **多 Worker 架构** - Ray 分布式处理，高并发支持
-- **工具调用解析** - 支持 DeepSeek、Qwen 等多种格式的工具调用解析
+- **工具调用解析** - 支持 DeepSeek、Qwen、Hermes 等多种格式的工具调用解析
 - **推理内容解析** - 支持思维链内容提取
+- **自定义 Parser 支持** - 支持从自定义目录按需发现和加载 parser，无需修改代码即可扩展解析能力
 
 ## 部署视图
 
@@ -208,7 +209,10 @@ TrajProxy/
 │   ├── archive_records.py
 │   ├── download_tokenizer.py
 │   └── verify_jinja_consistency.py
-└── models/                # 模型文件
+├── models/                # 模型文件
+└── custom_parsers/        # 自定义解析器（可选）
+    ├── tool_parsers/      # 自定义工具解析器
+    └── reasoning_parsers/ # 自定义推理解析器
 ```
 
 ## 文档

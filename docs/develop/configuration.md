@@ -78,6 +78,41 @@ archive:
 
 ## 配置项详解
 
+### 基础路径配置
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `models_dir` | string | /app/models | models 目录路径，用于 tokenizer 加载 |
+| `custom_parsers_dir` | string | /app/custom_parsers | 自定义 parser 目录路径 |
+
+**本地开发配置：**
+
+```yaml
+models_dir: ./models
+custom_parsers_dir: ./custom_parsers
+```
+
+**Docker 部署配置：**
+
+```yaml
+models_dir: /app/models
+custom_parsers_dir: /app/custom_parsers
+```
+
+**custom_parsers_dir 目录结构：**
+
+```
+custom_parsers/
+  tool_parsers/           # 自定义工具解析器目录
+    my_tool_parser.py     # 文件名即为 parser 名称
+  reasoning_parsers/      # 自定义推理解析器目录
+    my_reasoning_parser.py
+```
+
+详见 [parser.md](../design/parser.md#十二自定义-parser-按需发现机制)。
+
+---
+
 ### proxy_workers
 
 Worker 进程配置。

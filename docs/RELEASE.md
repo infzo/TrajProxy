@@ -4,6 +4,30 @@
 
 ---
 
+## [0.1.8] - 2026-04-29
+
+### 新增功能
+- **自定义 Parser 按需发现**: 支持从 `custom_parsers` 目录按需发现和加载 parser，无需修改代码即可扩展解析能力
+- **Hermes 工具解析器**: 新增 `hermes` parser，支持 Hermes 模型的工具调用格式
+- **Qwen3XML 工具解析器**: 新增 `qwen3_xml` parser，支持 Qwen3 XML 格式
+
+### 配置更新
+- **models_dir**: 新增配置项，指定 tokenizer 加载路径（默认 `/app/models`）
+- **custom_parsers_dir**: 新增配置项，指定自定义 parser 目录（默认 `/app/custom_parsers`）
+
+### 测试
+- **F212**: 新增自定义 Tool Parser 场景测试
+- **F213**: 新增自定义 Reasoning Parser 场景测试
+
+### 影响范围
+- `traj_proxy/proxy_core/parsers/parser_manager.py` - Parser 管理器，新增按需发现机制
+- `traj_proxy/proxy_core/parsers/vllm_compat/tool_parsers/` - 新增 hermes 和 qwen3xml 解析器
+- `traj_proxy/utils/config.py` - 配置模块，新增路径配置函数
+- `configs/config.yaml` - 配置文件，新增路径配置项
+- `tests/e2e/layers/proxy/scenarios/` - E2E 测试场景
+
+---
+
 ## [0.1.7] - 2026-04-24
 
 ### 新增功能
