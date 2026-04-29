@@ -736,7 +736,10 @@
         </div>
         <div class="search-group">
             <label>SERVER_ADDRESS</label>
-            <input type="text" id="serverUrl" value="http://localhost:80" placeholder="API Endpoint" style="width: 220px;">
+            <div style="position:relative;display:inline-block;">
+                <input type="text" id="serverUrl" value="http://localhost:80" placeholder="API Endpoint" style="width: 220px;" list="serverList">
+                <datalist id="serverList"></datalist>
+            </div>
 
             <label>MY_JOB_NAME(Run ID)</label>
             <input type="text" id="runId" placeholder="点击选择或输入" style="width: 160px;" list="runIdList" onclick="loadRunIdOptions()" onfocus="loadRunIdOptions()">
@@ -853,6 +856,25 @@ let trajRecordIdx = -1; // 当前轨迹视图显示的 record 索引
 const MAX_STRING_LEN = 200;
 const MAX_ARRAY_RENDER = 200; // 大数组最多渲染条目数
 const CHAT_COLLAPSE_LEN = 800; // 聊天消息超过此长度折叠
+
+// ==================== 预设服务器列表 ====================
+const PRESET_SERVERS = [
+    { url: 'http://localhost:80', desc: '本地开发环境' },
+    { url: 'http://7.242.105.47', desc: '测试EC2节点' }
+];
+
+/**
+ * 初始化服务器下拉列表
+ */
+function initServerList() {
+    const datalist = document.getElementById('serverList');
+    datalist.innerHTML = PRESET_SERVERS.map(s =>
+        `<option value="${s.url}" label="${s.desc}">`
+    ).join('');
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', initServerList);
 
 // ==================== Utils ====================
 function showToast(msg, type = 'info') {
