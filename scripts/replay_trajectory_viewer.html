@@ -485,14 +485,6 @@
         cursor: pointer;
     }
     .thinking-toggle:hover { background: rgba(139, 92, 246, 0.15); }
-    .thinking-content.collapsed { max-height: 120px; overflow: hidden; position: relative; }
-    .thinking-content.collapsed::after {
-        content: '';
-        position: absolute;
-        bottom: 0; left: 0; right: 0;
-        height: 40px;
-        background: linear-gradient(transparent, rgba(30, 41, 59, 0.95));
-    }
 
     /* 正常输出块样式 */
     .output-block {
@@ -1154,19 +1146,15 @@ function renderChatView(messages, record) {
 
         // Assistant 消息特殊处理：区分思考、工具、正常输出
         if (role === 'assistant') {
-            // 1. 渲染 reasoning_content (思考内容)
+            // 1. 渲染 reasoning_content (思考内容) - 默认完全折叠
             const reasoningContent = msg.reasoning_content || msg.reasoning;
             if (reasoningContent) {
                 const reasoningStr = formatMessageContent(reasoningContent);
                 if (reasoningStr) {
                     html += `<div class="thinking-block">`;
-                    html += `<div class="thinking-header">&#128173; 思考过程</div>`;
-                    if (reasoningStr.length > 500) {
-                        html += `<div class="thinking-content collapsed" id="thinking-${i}">${escapeHtml(reasoningStr)}</div>`;
-                        html += `<button class="thinking-toggle" onclick="toggleThinking(${i})">展开</button>`;
-                    } else {
-                        html += `<div class="thinking-content">${escapeHtml(reasoningStr)}</div>`;
-                    }
+                    html += `<div class="thinking-header">&#128173; 思考过程 <span style="font-weight:400;color:var(--text-dim)">(${reasoningStr.length} 字符)</span></div>`;
+                    html += `<div class="thinking-content hidden" id="thinking-${i}">${escapeHtml(reasoningStr)}</div>`;
+                    html += `<button class="thinking-toggle" onclick="toggleThinking(${i})">展开</button>`;
                     html += `</div>`;
                 }
             }
@@ -1301,13 +1289,13 @@ function expandChatMsg(idx, expand) {
 function toggleThinking(idx) {
     const contentEl = document.getElementById(`thinking-${idx}`);
     const btn = contentEl.nextElementSibling;
-    const isCollapsed = contentEl.classList.contains('collapsed');
+    const isHidden = contentEl.classList.contains('hidden');
 
-    if (isCollapsed) {
-        contentEl.classList.remove('collapsed');
+    if (isHidden) {
+        contentEl.classList.remove('hidden');
         btn.textContent = '收起';
     } else {
-        contentEl.classList.add('collapsed');
+        contentEl.classList.add('hidden');
         btn.textContent = '展开';
     }
 }
