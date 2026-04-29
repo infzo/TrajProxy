@@ -859,8 +859,8 @@ const CHAT_COLLAPSE_LEN = 800; // 聊天消息超过此长度折叠
 
 // ==================== 预设服务器列表 ====================
 const PRESET_SERVERS = [
-    { url: 'http://localhost:80', desc: '本地开发环境' },
-    { url: 'http://7.242.105.47', desc: '测试EC2节点' }
+    { url: 'http://localhost:12300', desc: '本地开发环境' },
+    { url: 'http://7.242.105.47:12300', desc: '测试EC2节点' }
 ];
 
 /**
@@ -992,8 +992,9 @@ async function loadRunIdOptions() {
             return timeB - timeA; // 倒序：最新在前
         });
 
-        // 填充 datalist
-        datalist.innerHTML = runIds.map(id => {
+        // 填充 datalist（最多显示 50 个选项，避免下拉框过长）
+        const displayRunIds = runIds.slice(0, 50);
+        datalist.innerHTML = displayRunIds.map(id => {
             const info = runIdMap.get(id);
             const timeStr = info.latest_updated_at ? info.latest_updated_at.toLocaleString() : '无时间';
             return `<option value="${escapeHtml(id)}">${info.count} 模型, ${timeStr}</option>`;
@@ -1001,6 +1002,8 @@ async function loadRunIdOptions() {
 
         if (runIds.length === 0) {
             showToast('未找到已注册的 Run ID', 'info');
+        } else if (runIds.length > 50) {
+            showToast(`加载 ${runIds.length} 个 Run ID（显示前 50 个）`, 'info');
         }
     } catch (e) {
         console.error('加载 Run ID 列表失败:', e);
