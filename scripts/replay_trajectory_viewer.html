@@ -581,6 +581,149 @@
     .toast-error { border-left: 3px solid var(--danger); }
     .toast-info { border-left: 3px solid var(--primary); }
 
+    /* ==================== 轨迹分析模态弹窗 ==================== */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s, visibility 0.2s;
+    }
+    .modal-overlay.show { opacity: 1; visibility: visible; }
+    .modal-content {
+        background: var(--bg-panel);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        width: 90vw;
+        max-width: 1000px;
+        height: 80vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        transform: translateY(20px);
+        transition: transform 0.2s;
+    }
+    .modal-overlay.show .modal-content { transform: translateY(0); }
+
+    .modal-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--text-main); }
+    .modal-close {
+        background: none;
+        border: none;
+        color: var(--text-dim);
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0 4px;
+        line-height: 1;
+    }
+    .modal-close:hover { color: var(--text-main); }
+
+    .modal-body {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .analysis-stats {
+        padding: 12px 20px;
+        background: rgba(0,0,0,0.2);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        gap: 24px;
+        font-size: 12px;
+        color: var(--text-muted);
+        flex-shrink: 0;
+    }
+    .stat-item { display: flex; align-items: center; gap: 6px; }
+    .stat-value { font-weight: 600; color: var(--text-main); font-variant-numeric: tabular-nums; }
+
+    .dag-scroll-container {
+        flex: 1;
+        overflow: auto;
+        position: relative;
+    }
+
+    .dag-container {
+        position: relative;
+        min-width: 100%;
+        min-height: 100%;
+        padding: 40px;
+    }
+
+    .dag-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+    }
+
+    .dag-node {
+        position: absolute;
+        width: 70px;
+        height: 44px;
+        border-radius: 8px;
+        background: var(--bg-card);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-weight: 700;
+        font-size: 14px;
+        transition: transform 0.15s, box-shadow 0.15s;
+        z-index: 1;
+    }
+    .dag-node.normal {
+        border: 2px solid var(--success);
+        color: #34d399;
+    }
+    .dag-node.error {
+        border: 2px solid var(--danger);
+        background: rgba(239, 68, 68, 0.1);
+        color: #f87171;
+    }
+    .dag-node:hover {
+        transform: scale(1.15);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        z-index: 10;
+    }
+    .dag-node.selected {
+        box-shadow: 0 0 0 3px var(--primary), 0 4px 20px rgba(99,102,241,0.3);
+    }
+
+    .dag-node-label {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        text-align: center;
+    }
+    .dag-node-idx { font-size: 14px; }
+    .dag-node-status { font-size: 9px; font-weight: 400; opacity: 0.7; }
+
+    .analysis-empty {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-dim);
+    }
+    .analysis-empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+
 </style>
 </head>
 <body>
@@ -637,6 +780,7 @@
                 <button class="btn-secondary" onclick="toggleAllRecords()" title="折叠/展开所有卡片">全部折叠/展开</button>
                 <button class="btn-secondary" onclick="expandAllFields()">展开字段</button>
                 <button class="btn-secondary" onclick="collapseAllFields()">收起字段</button>
+                <button class="btn-secondary" onclick="analyzeTrajectory()" title="分析记录关联关系">轨迹分析</button>
             </div>
         </div>
 
@@ -672,6 +816,30 @@
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
+
+<!-- 轨迹分析模态弹窗 -->
+<div class="modal-overlay" id="analysisModal" onclick="closeAnalysisModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">&#128202; 轨迹分析</div>
+            <button class="modal-close" onclick="closeAnalysisModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="analysis-stats" id="analysisStats"></div>
+            <div class="dag-scroll-container">
+                <div class="dag-container" id="dagContainer">
+                    <svg class="dag-svg" id="dagSvg">
+                        <defs>
+                            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+                            </marker>
+                        </defs>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 // ==================== State & Config ====================
@@ -1346,14 +1514,296 @@ function toggleThinking(idx) {
     }
 }
 
+// ==================== 轨迹分析功能 ====================
+
+/**
+ * 打开轨迹分析模态弹窗
+ */
+function analyzeTrajectory() {
+    if (currentRecords.length === 0) {
+        showToast('没有可分析的记录', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('analysisModal');
+    modal.classList.add('show');
+
+    // 构建关系图并渲染
+    const graph = buildRelationGraph(currentRecords);
+    renderDAG(graph);
+
+    // 更新统计信息
+    updateAnalysisStats(graph);
+}
+
+/**
+ * 关闭分析模态弹窗
+ */
+function closeAnalysisModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('analysisModal').classList.remove('show');
+}
+
+/**
+ * 构建记录关系图
+ * 返回: { nodes: [], edges: [], roots: [] }
+ */
+function buildRelationGraph(records) {
+    const nodes = records.map((r, i) => ({
+        idx: i,
+        hasError: !!r.error,
+        children: [],
+        parents: []
+    }));
+
+    const edges = [];
+
+    // 计算每个 record 的 messages 指纹（请求部分）
+    const fingerprints = records.map(r => computeMessagesFingerprint(r.messages || []));
+
+    // 检测继承关系：record[j] 继承自 record[i]
+    for (let i = 0; i < records.length; i++) {
+        for (let j = 0; j < records.length; j++) {
+            if (i === j) continue;
+
+            // 检测 j 是否继承自 i
+            if (isChildOf(records[j], records[i], fingerprints[i], fingerprints[j])) {
+                nodes[i].children.push(j);
+                nodes[j].parents.push(i);
+                edges.push({ from: i, to: j });
+            }
+        }
+    }
+
+    // 找出根节点（没有父节点的节点）
+    const roots = nodes.filter(n => n.parents.length === 0).map(n => n.idx);
+
+    return { nodes, edges, roots };
+}
+
+/**
+ * 计算 messages 的指纹（请求部分）
+ */
+function computeMessagesFingerprint(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) return '';
+    // 对每条消息取 role + content 前50字符
+    return messages.map(m => {
+        const content = typeof m.content === 'string' ? m.content : '';
+        const truncated = content.length > 50 ? content.substring(0, 50) : content;
+        return `${m.role}:${truncated}`;
+    }).join('|');
+}
+
+/**
+ * 判断 child 是否继承自 parent
+ * 继承条件：child.messages 的前 N 条与 parent.messages 一致
+ */
+function isChildOf(child, parent, parentFingerprint, childFingerprint) {
+    const parentMsgs = parent.messages || [];
+    const childMsgs = child.messages || [];
+
+    if (parentMsgs.length === 0 || childMsgs.length === 0) return false;
+    if (childMsgs.length <= parentMsgs.length) return false;
+
+    // 检查前 parentMsgs.length 条消息是否一致
+    for (let i = 0; i < parentMsgs.length; i++) {
+        if (!messagesEqual(childMsgs[i], parentMsgs[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * 比较两条消息是否相等
+ */
+function messagesEqual(a, b) {
+    if (a.role !== b.role) return false;
+
+    const contentA = typeof a.content === 'string' ? a.content : '';
+    const contentB = typeof b.content === 'string' ? b.content : '';
+
+    if (contentA !== contentB) return false;
+
+    // 比较 tool_calls（如果存在）
+    const tcA = a.tool_calls || [];
+    const tcB = b.tool_calls || [];
+    if (tcA.length !== tcB.length) return false;
+
+    return true;
+}
+
+/**
+ * 渲染 DAG 图
+ */
+function renderDAG(graph) {
+    const container = document.getElementById('dagContainer');
+    const svg = document.getElementById('dagSvg');
+
+    // 清空现有内容
+    container.querySelectorAll('.dag-node').forEach(el => el.remove());
+    svg.querySelectorAll('path').forEach(el => el.remove());
+
+    if (graph.nodes.length === 0) {
+        container.innerHTML = `<div class="analysis-empty">
+            <div class="analysis-empty-icon">&#128202;</div>
+            <div>没有数据可分析</div>
+        </div>`;
+        return;
+    }
+
+    // 计算布局：使用简单的层级布局
+    const layout = computeLayout(graph);
+
+    // 渲染节点
+    const nodeWidth = 70;
+    const nodeHeight = 44;
+    const horizontalGap = 30;
+    const verticalGap = 50;
+
+    layout.positions.forEach((pos, idx) => {
+        const node = graph.nodes[idx];
+        const x = pos.level * (nodeWidth + horizontalGap) + 40;
+        const y = pos.offset * (nodeHeight + verticalGap) + 40;
+
+        const nodeEl = document.createElement('div');
+        nodeEl.className = `dag-node ${node.hasError ? 'error' : 'normal'}`;
+        nodeEl.style.left = `${x}px`;
+        nodeEl.style.top = `${y}px`;
+        nodeEl.innerHTML = `<div class="dag-node-label">
+            <span class="dag-node-idx">#${idx + 1}</span>
+            <span class="dag-node-status">${node.hasError ? 'Error' : 'OK'}</span>
+        </div>`;
+        nodeEl.onclick = () => jumpToRecord(idx);
+        nodeEl.id = `dag-node-${idx}`;
+        container.appendChild(nodeEl);
+
+        // 存储位置信息用于绘制连线
+        node._x = x + nodeWidth / 2;
+        node._y = y + nodeHeight;
+    });
+
+    // 渲染连线
+    graph.edges.forEach(edge => {
+        const fromNode = graph.nodes[edge.from];
+        const toNode = graph.nodes[edge.to];
+
+        if (fromNode._x === undefined) return;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const fromX = fromNode._x;
+        const fromY = fromNode._y;
+        const toX = toNode._x;
+        const toY = toNode._y - nodeHeight;  // 连接到节点顶部
+
+        // 使用贝塞尔曲线
+        const midY = (fromY + toY) / 2;
+        path.setAttribute('d', `M${fromX},${fromY} C${fromX},${midY} ${toX},${midY} ${toX},${toY}`);
+        path.setAttribute('stroke', '#64748b');
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('marker-end', 'url(#arrowhead)');
+
+        svg.appendChild(path);
+    });
+
+    // 更新容器大小
+    const maxX = Math.max(...layout.positions.map(p => p.level)) * (nodeWidth + horizontalGap) + 150;
+    const maxY = Math.max(...layout.positions.map(p => p.offset)) * (nodeHeight + verticalGap) + 150;
+    container.style.width = `${Math.max(maxX, 400)}px`;
+    container.style.height = `${Math.max(maxY, 300)}px`;
+}
+
+/**
+ * 计算布局位置
+ * 返回: { positions: [{ level, offset }] }
+ */
+function computeLayout(graph) {
+    const positions = graph.nodes.map(() => ({ level: 0, offset: 0 }));
+
+    // BFS 分配层级
+    const visited = new Set();
+    const queue = [...graph.roots];
+
+    while (queue.length > 0) {
+        const idx = queue.shift();
+        if (visited.has(idx)) continue;
+        visited.add(idx);
+
+        const node = graph.nodes[idx];
+        const currentLevel = positions[idx].level;
+
+        node.children.forEach(childIdx => {
+            if (!visited.has(childIdx)) {
+                positions[childIdx].level = Math.max(positions[childIdx].level, currentLevel + 1);
+                queue.push(childIdx);
+            }
+        });
+    }
+
+    // 按层级分组，计算每层内的偏移
+    const levels = {};
+    graph.nodes.forEach((node, idx) => {
+        const level = positions[idx].level;
+        if (!levels[level]) levels[level] = [];
+        levels[level].push(idx);
+    });
+
+    Object.values(levels).forEach((nodesInLevel, levelIdx) => {
+        nodesInLevel.forEach((idx, offset) => {
+            positions[idx].offset = offset;
+        });
+    });
+
+    return { positions };
+}
+
+/**
+ * 更新统计信息
+ */
+function updateAnalysisStats(graph) {
+    const statsEl = document.getElementById('analysisStats');
+    const errorCount = graph.nodes.filter(n => n.hasError).length;
+    const rootCount = graph.roots.length;
+    const edgeCount = graph.edges.length;
+
+    statsEl.innerHTML = `
+        <div class="stat-item"><span>总记录:</span><span class="stat-value">${graph.nodes.length}</span></div>
+        <div class="stat-item"><span>对话树:</span><span class="stat-value">${rootCount}</span></div>
+        <div class="stat-item"><span>关联数:</span><span class="stat-value">${edgeCount}</span></div>
+        <div class="stat-item"><span>异常:</span><span class="stat-value" style="color: ${errorCount > 0 ? '#f87171' : 'var(--success)'}">${errorCount}</span></div>
+    `;
+}
+
+/**
+ * 跳转到指定记录
+ */
+function jumpToRecord(idx) {
+    closeAnalysisModal();
+    currentRecordIdx = idx;
+    updateNav();
+    scrollToRecord(idx);
+
+    // 高亮 DAG 节点
+    document.querySelectorAll('.dag-node').forEach(n => n.classList.remove('selected'));
+    const nodeEl = document.getElementById(`dag-node-${idx}`);
+    if (nodeEl) nodeEl.classList.add('selected');
+}
+
 // Keyboard Shortcuts
 document.addEventListener('keydown', (e) => {
-    if (currentRecords.length === 0) return;
     if (e.target.tagName === 'INPUT') return;
+
+    if (e.key === 'Escape') {
+        closeAnalysisModal();
+        closeTrajectory();
+    }
+
+    if (currentRecords.length === 0) return;
 
     if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); navigateRecord(-1); }
     if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navigateRecord(1); }
-    if (e.key === 'Escape') { closeTrajectory(); }
 });
 </script>
 </body>
