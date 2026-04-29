@@ -115,6 +115,48 @@
     .badge-primary { background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
     .badge-danger { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 
+    /* ==================== 自定义下拉框 ==================== */
+    .custom-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+    .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        min-width: 200px;
+        max-height: 300px;
+        overflow-y: auto;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        box-shadow: var(--shadow-md);
+        z-index: 100;
+        display: none;
+        margin-top: 2px;
+    }
+    .dropdown-menu.show { display: block; }
+    .dropdown-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: background 0.15s;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .dropdown-item:hover { background: rgba(99, 102, 241, 0.1); }
+    .dropdown-item:last-child { border-bottom: none; }
+    .dropdown-item-value { font-family: var(--font-mono); font-size: 12px; color: var(--text-main); }
+    .dropdown-item-meta { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+    .dropdown-empty {
+        padding: 12px;
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 12px;
+    }
+    .dropdown-loading {
+        padding: 12px;
+        text-align: center;
+    }
+
     /* ==================== Layout ==================== */
     .app-header {
         height: 60px;
@@ -742,8 +784,10 @@
             </div>
 
             <label>MY_JOB_NAME(Run ID)</label>
-            <input type="text" id="runId" placeholder="先选择服务器地址" style="width: 160px;" list="runIdList" onclick="loadRunIdOptions()" onfocus="loadRunIdOptions()" disabled>
-            <datalist id="runIdList"></datalist>
+            <div class="custom-dropdown" id="runIdDropdownWrapper">
+                <input type="text" id="runId" placeholder="先选择服务器地址" style="width: 160px;" onclick="toggleRunIdDropdown()" disabled autocomplete="off">
+                <div class="dropdown-menu" id="runIdDropdown"></div>
+            </div>
 
             <button class="btn-primary" id="btnFetch" onclick="fetchSessions()">
                 <span>&#128269;</span> 查询
@@ -880,10 +924,11 @@ function initServerList() {
 function onServerChange() {
     const serverUrl = document.getElementById('serverUrl').value.trim();
     const runIdInput = document.getElementById('runId');
-    const runIdList = document.getElementById('runIdList');
+    const runIdDropdown = document.getElementById('runIdDropdown');
 
-    // 清空 Run ID 列表，下次点击时会重新加载
-    runIdList.innerHTML = '';
+    // 清空已加载的 Run ID 数据，下次点击时会重新加载
+    loadedRunIdData = null;
+    runIdDropdown.innerHTML = '';
 
     if (serverUrl) {
         // 启用 Run ID 输入框
@@ -943,19 +988,66 @@ async function apiGet(path) {
 }
 
 /**
- * 加载 run_id 选项列表
+ * 切换 Run ID 下拉框显示/隐藏
+ */
+function toggleRunIdDropdown() {
+    const dropdown = document.getElementById('runIdDropdown');
+    const input = document.getElementById('runId');
+
+    if (input.disabled) return;
+
+    if (dropdown.classList.contains('show')) {
+        dropdown.classList.remove('show');
+    } else {
+        // 显示下拉框并加载数据
+        dropdown.classList.add('show');
+        loadRunIdOptions();
+    }
+}
+
+/**
+ * 选择 Run ID 选项
+ */
+function selectRunId(value) {
+    const input = document.getElementById('runId');
+    input.value = value;
+    document.getElementById('runIdDropdown').classList.remove('show');
+}
+
+/**
+ * 点击外部关闭下拉框
+ */
+document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('runIdDropdownWrapper');
+    const dropdown = document.getElementById('runIdDropdown');
+    if (wrapper && dropdown && !wrapper.contains(e.target)) {
+        dropdown.classList.remove('show');
+    }
+});
+
+// 存储已加载的 Run ID 数据，避免重复请求
+let loadedRunIdData = null;
+
+/**
+ * 加载 run_id 选项列表（自定义下拉框）
  * 从 /models 接口获取所有模型，提取 run_id，按注册时间倒序排列
  */
 async function loadRunIdOptions() {
-    const datalist = document.getElementById('runIdList');
+    const dropdown = document.getElementById('runIdDropdown');
 
-    // 如果已经加载过，不重复加载
-    if (datalist.children.length > 0) return;
+    // 如果已经加载过，直接显示
+    if (loadedRunIdData) {
+        renderRunIdDropdown(loadedRunIdData);
+        return;
+    }
+
+    // 显示加载状态
+    dropdown.innerHTML = '<div class="dropdown-loading"><div class="spinner"></div></div>';
 
     try {
         serverUrl = document.getElementById('serverUrl').value.replace(/\/+$/, '');
         if (!serverUrl) {
-            showToast('请先填写 SERVER_ADDRESS', 'error');
+            dropdown.innerHTML = '<div class="dropdown-empty">请先选择服务器地址</div>';
             return;
         }
 
@@ -992,23 +1084,38 @@ async function loadRunIdOptions() {
             return timeB - timeA; // 倒序：最新在前
         });
 
-        // 填充 datalist（最多显示 50 个选项，避免下拉框过长）
-        const displayRunIds = runIds.slice(0, 50);
-        datalist.innerHTML = displayRunIds.map(id => {
-            const info = runIdMap.get(id);
-            const timeStr = info.latest_updated_at ? info.latest_updated_at.toLocaleString() : '无时间';
-            return `<option value="${escapeHtml(id)}">${info.count} 模型, ${timeStr}</option>`;
-        }).join('');
+        // 存储数据
+        loadedRunIdData = { runIds, runIdMap };
 
-        if (runIds.length === 0) {
-            showToast('未找到已注册的 Run ID', 'info');
-        } else if (runIds.length > 50) {
-            showToast(`加载 ${runIds.length} 个 Run ID（显示前 50 个）`, 'info');
-        }
+        // 渲染下拉框
+        renderRunIdDropdown(loadedRunIdData);
+
     } catch (e) {
         console.error('加载 Run ID 列表失败:', e);
-        // 静默失败，不影响用户手动输入
+        dropdown.innerHTML = '<div class="dropdown-empty">加载失败，请手动输入</div>';
     }
+}
+
+/**
+ * 渲染 Run ID 下拉框内容
+ */
+function renderRunIdDropdown(data) {
+    const dropdown = document.getElementById('runIdDropdown');
+    const { runIds, runIdMap } = data;
+
+    if (runIds.length === 0) {
+        dropdown.innerHTML = '<div class="dropdown-empty">未找到已注册的 Run ID</div>';
+        return;
+    }
+
+    dropdown.innerHTML = runIds.map(id => {
+        const info = runIdMap.get(id);
+        const timeStr = info.latest_updated_at ? info.latest_updated_at.toLocaleString() : '无时间';
+        return `<div class="dropdown-item" onclick="selectRunId('${escapeHtml(id)}')">
+            <div class="dropdown-item-value">${escapeHtml(id)}</div>
+            <div class="dropdown-item-meta">${info.count} 模型, ${timeStr}</div>
+        </div>`;
+    }).join('');
 }
 
 // ==================== Logic: Sessions ====================
@@ -1334,7 +1441,8 @@ function clearAll() {
     document.getElementById('runId').value = '';
     document.getElementById('runId').disabled = true;
     document.getElementById('runId').placeholder = '先选择服务器地址';
-    document.getElementById('runIdList').innerHTML = '';
+    document.getElementById('runIdDropdown').innerHTML = '';
+    loadedRunIdData = null;
     document.getElementById('sessionSearch').value = '';
     document.getElementById('sessionList').innerHTML = '<div class="empty-state"><div class="empty-icon">&#128193;</div><div class="empty-text">输入 MY_JOB_NAME(Run ID) 开始查询</div></div>';
     document.getElementById('recordList').innerHTML = '<div class="empty-state"><div class="empty-icon">&#128200;</div><div class="empty-text">在左侧选择 Session 查看轨迹详情</div></div>';
