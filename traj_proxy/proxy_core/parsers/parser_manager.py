@@ -5,7 +5,12 @@
 Parser 管理器
 
 统一管理 Tool Parser 和 Reasoning Parser 的创建和获取。
+支持从自定义目录按需发现和加载 parser。
 """
+import sys
+import importlib.util
+import logging
+from pathlib import Path
 from typing import Optional, List, Any, Dict, Sequence, Union, Tuple
 
 # 确保 vllm 兼容层初始化
@@ -29,6 +34,14 @@ from vllm.entrypoints.openai.engine.protocol import (
     ExtractedToolCallInformation,
     FunctionDefinition,
 )
+
+# 自定义 parser 目录（项目根目录下的 custom_parsers/）
+# parser_manager.py 位于 traj_proxy/proxy_core/parsers/，需要往上 3 层到达项目根目录
+_CUSTOM_PARSERS_DIR = Path(__file__).resolve().parents[3] / "custom_parsers"
+CUSTOM_TOOL_PARSERS_DIR = _CUSTOM_PARSERS_DIR / "tool_parsers"
+CUSTOM_REASONING_PARSERS_DIR = _CUSTOM_PARSERS_DIR / "reasoning_parsers"
+
+_logger = logging.getLogger(__name__)
 
 
 class Parser:
@@ -226,6 +239,7 @@ class ParserManager:
     """统一的 Parser 管理器
 
     提供一站式接口获取和创建 Parser 实例。
+    支持从自定义目录按需发现和加载 parser。
 
     使用示例：
         # 获取 parser 类
@@ -237,7 +251,84 @@ class ParserManager:
 
         # 使用 parser
         result = tool_parser.extract_tool_calls(model_output, request)
+
+    自定义 parser 按需发现：
+        1. 在 custom_parsers/tool_parsers/ 目录下放置 parser 文件
+        2. 文件名即为 parser 名称（如 my_parser.py -> "my_parser"）
+        3. 首次请求时自动发现并加载
     """
+
+    @classmethod
+    def _try_load_custom_tool_parser(cls, name: str) -> Optional[type]:
+        """从自定义目录加载 Tool Parser
+
+        Args:
+            name: Parser 名称
+
+        Returns:
+            Parser 类，如果未找到则返回 None
+        """
+        parser_file = CUSTOM_TOOL_PARSERS_DIR / f"{name}.py"
+        if not parser_file.exists():
+            return None
+
+        _logger.info(f"从自定义目录加载 Tool Parser: {parser_file}")
+
+        try:
+            spec = importlib.util.spec_from_file_location(f"custom_tool_parser.{name}", parser_file)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[f"custom_tool_parser.{name}"] = module
+                spec.loader.exec_module(module)
+
+                # 查找 ToolParser 子类
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if isinstance(attr, type) and issubclass(attr, ToolParser) and attr is not ToolParser:
+                        # 注册到管理器
+                        ToolParserManager.register_module(name, module=attr)
+                        _logger.info(f"成功注册自定义 Tool Parser: {name} -> {attr.__name__}")
+                        return attr
+        except Exception as e:
+            _logger.error(f"加载自定义 Tool Parser 失败: {name}, 错误: {e}")
+
+        return None
+
+    @classmethod
+    def _try_load_custom_reasoning_parser(cls, name: str) -> Optional[type]:
+        """从自定义目录加载 Reasoning Parser
+
+        Args:
+            name: Parser 名称
+
+        Returns:
+            Parser 类，如果未找到则返回 None
+        """
+        parser_file = CUSTOM_REASONING_PARSERS_DIR / f"{name}.py"
+        if not parser_file.exists():
+            return None
+
+        _logger.info(f"从自定义目录加载 Reasoning Parser: {parser_file}")
+
+        try:
+            spec = importlib.util.spec_from_file_location(f"custom_reasoning_parser.{name}", parser_file)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[f"custom_reasoning_parser.{name}"] = module
+                spec.loader.exec_module(module)
+
+                # 查找 ReasoningParser 子类
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if isinstance(attr, type) and issubclass(attr, ReasoningParser) and attr is not ReasoningParser:
+                        # 注册到管理器
+                        ReasoningParserManager.register_module(name, module=attr)
+                        _logger.info(f"成功注册自定义 Reasoning Parser: {name} -> {attr.__name__}")
+                        return attr
+        except Exception as e:
+            _logger.error(f"加载自定义 Reasoning Parser 失败: {name}, 错误: {e}")
+
+        return None
 
     @classmethod
     def create_parser(
@@ -247,6 +338,8 @@ class ParserManager:
         tokenizer: Any,
     ) -> Parser:
         """创建 Parser 实例（统一接口）
+
+        支持按需发现：如果 parser 不在默认注册表中，会从自定义目录查找。
 
         Args:
             tool_parser_name: Tool Parser 名称（None 或空字符串表示不使用）
@@ -263,12 +356,14 @@ class ParserManager:
         reasoning_parser = None
 
         if tool_parser_name:
-            parser_cls = ToolParserManager.get_tool_parser(tool_parser_name)
+            # 使用 get_tool_parser_cls 以支持按需发现
+            parser_cls = cls.get_tool_parser_cls(tool_parser_name)
             if parser_cls:
                 tool_parser = parser_cls(tokenizer=tokenizer)
 
         if reasoning_parser_name:
-            parser_cls = ReasoningParserManager.get_reasoning_parser(reasoning_parser_name)
+            # 使用 get_reasoning_parser_cls 以支持按需发现
+            parser_cls = cls.get_reasoning_parser_cls(reasoning_parser_name)
             if parser_cls:
                 reasoning_parser = parser_cls(tokenizer=tokenizer)
 
@@ -300,6 +395,8 @@ class ParserManager:
     def get_tool_parser_cls(cls, name: str) -> Optional[type]:
         """获取 Tool Parser 类
 
+        按需发现机制：如果默认注册表中没有，则从自定义目录查找并加载。
+
         Args:
             name: Parser 名称（如 "qwen3_coder"）
 
@@ -310,11 +407,14 @@ class ParserManager:
         try:
             return ToolParserManager.get_tool_parser(name)
         except KeyError:
-            return None
+            # 默认注册表中没有，尝试从自定义目录加载
+            return cls._try_load_custom_tool_parser(name)
 
     @classmethod
     def get_reasoning_parser_cls(cls, name: str) -> Optional[type]:
         """获取 Reasoning Parser 类
+
+        按需发现机制：如果默认注册表中没有，则从自定义目录查找并加载。
 
         Args:
             name: Parser 名称（如 "qwen3"）
@@ -326,7 +426,8 @@ class ParserManager:
         try:
             return ReasoningParserManager.get_reasoning_parser(name)
         except KeyError:
-            return None
+            # 默认注册表中没有，尝试从自定义目录加载
+            return cls._try_load_custom_reasoning_parser(name)
 
     @classmethod
     def list_tool_parsers(cls) -> List[str]:
