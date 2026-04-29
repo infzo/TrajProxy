@@ -737,12 +737,12 @@
         <div class="search-group">
             <label>SERVER_ADDRESS</label>
             <div style="position:relative;display:inline-block;">
-                <input type="text" id="serverUrl" value="http://localhost:80" placeholder="API Endpoint" style="width: 220px;" list="serverList">
+                <input type="text" id="serverUrl" value="" placeholder="选择或输入服务器地址" style="width: 220px;" list="serverList" onchange="onServerChange()">
                 <datalist id="serverList"></datalist>
             </div>
 
             <label>MY_JOB_NAME(Run ID)</label>
-            <input type="text" id="runId" placeholder="点击选择或输入" style="width: 160px;" list="runIdList" onclick="loadRunIdOptions()" onfocus="loadRunIdOptions()">
+            <input type="text" id="runId" placeholder="先选择服务器地址" style="width: 160px;" list="runIdList" onclick="loadRunIdOptions()" onfocus="loadRunIdOptions()" disabled>
             <datalist id="runIdList"></datalist>
 
             <button class="btn-primary" id="btnFetch" onclick="fetchSessions()">
@@ -871,6 +871,30 @@ function initServerList() {
     datalist.innerHTML = PRESET_SERVERS.map(s =>
         `<option value="${s.url}" label="${s.desc}">`
     ).join('');
+}
+
+/**
+ * 服务器地址变化时触发
+ * 清空 Run ID 列表并启用输入框
+ */
+function onServerChange() {
+    const serverUrl = document.getElementById('serverUrl').value.trim();
+    const runIdInput = document.getElementById('runId');
+    const runIdList = document.getElementById('runIdList');
+
+    // 清空 Run ID 列表，下次点击时会重新加载
+    runIdList.innerHTML = '';
+
+    if (serverUrl) {
+        // 启用 Run ID 输入框
+        runIdInput.disabled = false;
+        runIdInput.placeholder = '点击选择或输入';
+    } else {
+        // 禁用 Run ID 输入框
+        runIdInput.disabled = true;
+        runIdInput.placeholder = '先选择服务器地址';
+        runIdInput.value = '';
+    }
 }
 
 // 页面加载时初始化
@@ -1303,7 +1327,11 @@ function scrollToRecord(idx) {
 }
 
 function clearAll() {
+    document.getElementById('serverUrl').value = '';
     document.getElementById('runId').value = '';
+    document.getElementById('runId').disabled = true;
+    document.getElementById('runId').placeholder = '先选择服务器地址';
+    document.getElementById('runIdList').innerHTML = '';
     document.getElementById('sessionSearch').value = '';
     document.getElementById('sessionList').innerHTML = '<div class="empty-state"><div class="empty-icon">&#128193;</div><div class="empty-text">输入 MY_JOB_NAME(Run ID) 开始查询</div></div>';
     document.getElementById('recordList').innerHTML = '<div class="empty-state"><div class="empty-icon">&#128200;</div><div class="empty-text">在左侧选择 Session 查看轨迹详情</div></div>';
