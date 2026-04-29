@@ -898,7 +898,7 @@ async function apiGet(path) {
 
 /**
  * 加载 run_id 选项列表
- * 从 /models 接口获取所有模型，提取 run_id
+ * 从 /models 接口获取所有模型，提取 run_id，按注册时间倒序排列
  */
 async function loadRunIdOptions() {
     const datalist = document.getElementById('runIdList');
@@ -917,26 +917,40 @@ async function loadRunIdOptions() {
         const data = await apiGet('/models');
         const models = data.models || [];
 
-        // 提取 run_id 并收集信息
-        const runIdMap = new Map(); // run_id -> { count, latest_model }
+        // 提取 run_id 并收集最新更新时间
+        const runIdMap = new Map(); // run_id -> { count, latest_updated_at }
         models.forEach(m => {
             const runId = m.run_id;
             if (runId) {
                 if (!runIdMap.has(runId)) {
-                    runIdMap.set(runId, { count: 0, latestModel: m.model_name });
+                    runIdMap.set(runId, { count: 0, latest_updated_at: null });
                 }
                 const info = runIdMap.get(runId);
                 info.count++;
+                // 取最新的 updated_at
+                if (m.updated_at) {
+                    const updateTime = new Date(m.updated_at);
+                    if (!info.latest_updated_at || updateTime > info.latest_updated_at) {
+                        info.latest_updated_at = updateTime;
+                    }
+                }
             }
         });
 
-        // 转换为数组并按 run_id 倒序排列（近似于最新在前）
-        const runIds = Array.from(runIdMap.keys()).sort((a, b) => b.localeCompare(a));
+        // 转换为数组并按 updated_at 倒序排列（最新在前）
+        const runIds = Array.from(runIdMap.keys()).sort((a, b) => {
+            const infoA = runIdMap.get(a);
+            const infoB = runIdMap.get(b);
+            const timeA = infoA.latest_updated_at ? infoA.latest_updated_at.getTime() : 0;
+            const timeB = infoB.latest_updated_at ? infoB.latest_updated_at.getTime() : 0;
+            return timeB - timeA; // 倒序：最新在前
+        });
 
         // 填充 datalist
         datalist.innerHTML = runIds.map(id => {
             const info = runIdMap.get(id);
-            return `<option value="${escapeHtml(id)}">${info.count} 个模型</option>`;
+            const timeStr = info.latest_updated_at ? info.latest_updated_at.toLocaleString() : '无时间';
+            return `<option value="${escapeHtml(id)}">${info.count} 模型, ${timeStr}</option>`;
         }).join('');
 
         if (runIds.length === 0) {
