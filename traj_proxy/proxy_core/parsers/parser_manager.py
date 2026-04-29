@@ -34,14 +34,15 @@ from vllm.entrypoints.openai.engine.protocol import (
     ExtractedToolCallInformation,
     FunctionDefinition,
 )
-
-# 自定义 parser 目录（项目根目录下的 custom_parsers/）
-# parser_manager.py 位于 traj_proxy/proxy_core/parsers/，需要往上 3 层到达项目根目录
-_CUSTOM_PARSERS_DIR = Path(__file__).resolve().parents[3] / "custom_parsers"
-CUSTOM_TOOL_PARSERS_DIR = _CUSTOM_PARSERS_DIR / "tool_parsers"
-CUSTOM_REASONING_PARSERS_DIR = _CUSTOM_PARSERS_DIR / "reasoning_parsers"
+from traj_proxy.utils.config import get_custom_parsers_dir
 
 _logger = logging.getLogger(__name__)
+
+
+def _get_custom_parsers_dirs() -> Tuple[Path, Path]:
+    """获取自定义 parser 目录路径（从配置文件读取）"""
+    base_dir = Path(get_custom_parsers_dir())
+    return base_dir / "tool_parsers", base_dir / "reasoning_parsers"
 
 
 class Parser:
@@ -268,7 +269,8 @@ class ParserManager:
         Returns:
             Parser 类，如果未找到则返回 None
         """
-        parser_file = CUSTOM_TOOL_PARSERS_DIR / f"{name}.py"
+        custom_tool_parsers_dir, _ = _get_custom_parsers_dirs()
+        parser_file = custom_tool_parsers_dir / f"{name}.py"
         if not parser_file.exists():
             return None
 
@@ -281,14 +283,18 @@ class ParserManager:
                 sys.modules[f"custom_tool_parser.{name}"] = module
                 spec.loader.exec_module(module)
 
-                # 查找 ToolParser 子类
+                # 查找 ToolParser 子类（排除导入的基类）
+                # 只查找在当前模块中定义的类，通过检查 __module__ 属性
+                expected_module_name = f"custom_tool_parser.{name}"
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if isinstance(attr, type) and issubclass(attr, ToolParser) and attr is not ToolParser:
-                        # 注册到管理器
-                        ToolParserManager.register_module(name, module=attr)
-                        _logger.info(f"成功注册自定义 Tool Parser: {name} -> {attr.__name__}")
-                        return attr
+                        # 检查类是否在当前模块中定义（排除导入的基类）
+                        if hasattr(attr, '__module__') and attr.__module__ == expected_module_name:
+                            # 注册到管理器
+                            ToolParserManager.register_module(name, module=attr)
+                            _logger.info(f"成功注册自定义 Tool Parser: {name} -> {attr.__name__}")
+                            return attr
         except Exception as e:
             _logger.error(f"加载自定义 Tool Parser 失败: {name}, 错误: {e}")
 
@@ -304,7 +310,8 @@ class ParserManager:
         Returns:
             Parser 类，如果未找到则返回 None
         """
-        parser_file = CUSTOM_REASONING_PARSERS_DIR / f"{name}.py"
+        _, custom_reasoning_parsers_dir = _get_custom_parsers_dirs()
+        parser_file = custom_reasoning_parsers_dir / f"{name}.py"
         if not parser_file.exists():
             return None
 
@@ -317,14 +324,18 @@ class ParserManager:
                 sys.modules[f"custom_reasoning_parser.{name}"] = module
                 spec.loader.exec_module(module)
 
-                # 查找 ReasoningParser 子类
+                # 查找 ReasoningParser 子类（排除导入的基类）
+                # 只查找在当前模块中定义的类，通过检查 __module__ 属性
+                expected_module_name = f"custom_reasoning_parser.{name}"
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if isinstance(attr, type) and issubclass(attr, ReasoningParser) and attr is not ReasoningParser:
-                        # 注册到管理器
-                        ReasoningParserManager.register_module(name, module=attr)
-                        _logger.info(f"成功注册自定义 Reasoning Parser: {name} -> {attr.__name__}")
-                        return attr
+                        # 检查类是否在当前模块中定义（排除导入的基类）
+                        if hasattr(attr, '__module__') and attr.__module__ == expected_module_name:
+                            # 注册到管理器
+                            ReasoningParserManager.register_module(name, module=attr)
+                            _logger.info(f"成功注册自定义 Reasoning Parser: {name} -> {attr.__name__}")
+                            return attr
         except Exception as e:
             _logger.error(f"加载自定义 Reasoning Parser 失败: {name}, 错误: {e}")
 
@@ -405,9 +416,11 @@ class ParserManager:
         """
         ensure_initialized()
         try:
+            _logger.info(f"get_tool_parser_cls: {name}")
             return ToolParserManager.get_tool_parser(name)
         except KeyError:
             # 默认注册表中没有，尝试从自定义目录加载
+            _logger.info(f"get_tool_parser_cls _try_load_custom_tool_parser: {name}")
             return cls._try_load_custom_tool_parser(name)
 
     @classmethod
@@ -424,9 +437,11 @@ class ParserManager:
         """
         ensure_initialized()
         try:
+            _logger.info(f"get_reasoning_parser_cls: {name}")
             return ReasoningParserManager.get_reasoning_parser(name)
         except KeyError:
             # 默认注册表中没有，尝试从自定义目录加载
+            _logger.info(f"get_reasoning_parser_cls _try_load_custom_reasoning_parser: {name}")
             return cls._try_load_custom_reasoning_parser(name)
 
     @classmethod

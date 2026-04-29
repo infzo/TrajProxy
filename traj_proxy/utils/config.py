@@ -149,6 +149,21 @@ def get_models_dir() -> str:
     return os.path.abspath(models_dir)
 
 
+def get_custom_parsers_dir() -> str:
+    """
+    获取自定义 parser 目录路径
+
+    优先级：
+    1. config.yaml 中的 custom_parsers_dir 配置
+    2. 默认值 /app/custom_parsers
+
+    返回:
+        custom_parsers 目录的绝对路径
+    """
+    custom_parsers_dir = get_config().get("custom_parsers_dir", "/app/custom_parsers")
+    return os.path.abspath(custom_parsers_dir)
+
+
 def get_archive_config() -> Dict:
     """
     获取归档配置

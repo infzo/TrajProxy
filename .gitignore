@@ -222,6 +222,7 @@ postgres_data/
 dockers/images/
 models/
 archives/
+custom_parsers/
 
 # macOS
 .DS_Store

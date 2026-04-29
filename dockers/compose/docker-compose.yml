@@ -96,6 +96,7 @@ services:
     volumes:
       - ./configs/config.yaml:/app/configs/config.yaml
       - ../../models:/app/models
+      - ../../custom_parsers:/app/custom_parsers
       - ../../traj_proxy:/app/traj_proxy
       - ../../archives:/data/archives
       - ../../logs:/app/logs
