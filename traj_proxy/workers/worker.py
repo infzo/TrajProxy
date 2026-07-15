@@ -518,7 +518,7 @@ class ProxyWorker:
         if self.processor_manager:
             # 停止空闲淘汰
             await self.processor_manager.stop_idle_eviction()
-            # 清理 LRU 缓存
+            # 排空所有 in-flight 请求后再清理缓存
             await self.processor_manager.clear_cache()
 
         # 关闭进程级共享 HTTP client（必须在 Processor 清理之后）

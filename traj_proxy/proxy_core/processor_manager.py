@@ -29,7 +29,7 @@ from traj_proxy.store.request_repository import RequestRepository
 from traj_proxy.store.models import ModelConfig
 from traj_proxy.exceptions import DatabaseError
 from traj_proxy.utils.logger import get_logger
-from traj_proxy.utils.config import get_models_dir, get_processor_cache_max_size, get_processor_idle_timeout, get_storage_mode
+from traj_proxy.utils.config import get_models_dir, get_processor_cache_max_size, get_processor_idle_timeout, get_processor_drain_timeout, get_storage_mode
 from traj_proxy.observability.event_bus import emit
 from traj_proxy.observability.events import EVENT_MODEL_LIFECYCLE
 from traj_proxy.observability.decorators import observe_model_lifecycle
@@ -96,6 +96,9 @@ class ProcessorManager:
         self._last_access_time: Dict[Tuple[str, str], float] = {}
         self._idle_timeout: int = get_processor_idle_timeout()
         self._idle_eviction_task: Optional[asyncio.Task] = None
+
+        # 优雅排空超时
+        self._drain_timeout: int = get_processor_drain_timeout()
 
         # 模型注册表（供 ModelSynchronizer 使用）
         self.model_registry = ModelRepository(db_manager.pool)
@@ -200,16 +203,66 @@ class ProcessorManager:
         if processor.tokenizer_path and processor.token_in_token_out:
             self._tokenizer_cache.release(processor.tokenizer_path)
 
-    async def _evict_one(self) -> None:
-        """淘汰最久未使用的 Processor"""
-        if self._processor_cache:
-            evicted_key, evicted = self._processor_cache.popitem(last=False)
-            self._last_access_time.pop(evicted_key, None)
-            await self._release_processor_async(evicted)
-            logger.info(
-                f"LRU 淘汰: run_id={evicted_key[0]}, model_name={evicted_key[1]}, "
-                f"cache_size={len(self._processor_cache)}"
-            )
+    async def _drain_and_release(self, key: Tuple[str, str]) -> None:
+        """注销模型：删除配置 + 优雅排空并释放 Processor 资源
+
+        仅用于强制删除场景（unregister / full_sync 删除）。
+        淘汰场景（LRU / 空闲）直接跳过有活跃请求的 Processor，不 drain。
+
+        Args:
+            key: (run_id, model_name) 元组
+        """
+        # 移除配置和访问时间
+        self._dynamic_configs.pop(key, None)
+        self._last_access_time.pop(key, None)
+
+        # 从缓存弹出 Processor
+        processor = self._processor_cache.pop(key, None)
+        if processor is None:
+            return
+
+        # 标记为 draining，阻止新请求
+        processor.mark_draining()
+
+        # 等待 in-flight 请求完成
+        if processor.inflight_count > 0:
+            drained = await processor.wait_drained(timeout=self._drain_timeout)
+            if not drained:
+                logger.warning(
+                    f"Processor 排空超时: run_id={key[0]}, model_name={key[1]}, "
+                    f"inflight={processor.inflight_count}, "
+                    f"timeout={self._drain_timeout}s, 强制释放"
+                )
+
+        # 释放资源
+        await self._release_processor_async(processor)
+
+    async def _evict_one(self) -> bool:
+        """淘汰最久未使用的空闲 Processor
+
+        遍历 LRU 缓存（从最旧到最新），找到第一个无 in-flight 请求的 Processor 并淘汰。
+        如果所有缓存中的 Processor 都有活跃请求，不强制淘汰，返回 False。
+
+        Returns:
+            True 表示成功淘汰一个，False 表示无可淘汰的 Processor
+        """
+        for key in list(self._processor_cache.keys()):
+            processor = self._processor_cache[key]
+            if processor.inflight_count == 0:
+                self._processor_cache.pop(key)
+                self._last_access_time.pop(key, None)
+                await self._release_processor_async(processor)
+                logger.info(
+                    f"LRU 淘汰: run_id={key[0]}, model_name={key[1]}, "
+                    f"cache_size={len(self._processor_cache)}"
+                )
+                return True
+        # 所有 Processor 都有活跃请求，不强制淘汰
+        logger.warning(
+            f"LRU 淘汰跳过: 缓存中 {len(self._processor_cache)} 个 Processor "
+            f"均有 in-flight 请求，允许缓存临时超出上限"
+        )
+        return False
 
     async def _build_processor(self, config: ModelConfig) -> Processor:
         """从 ModelConfig 创建 Processor（不存储）
@@ -264,9 +317,10 @@ class ProcessorManager:
                 self._touch(key)
                 return self._processor_cache[key]
 
-            # 淘汰旧项（如有必要）
+            # 淘汰旧项（如有必要，跳过有活跃请求的）
             while len(self._processor_cache) >= self._cache_max_size:
-                await self._evict_one()
+                if not await self._evict_one():
+                    break  # 所有 Processor 都有活跃请求，允许缓存临时超出上限
 
             # 创建 Processor
             try:
@@ -324,16 +378,12 @@ class ProcessorManager:
 
     @observe_model_lifecycle("unregister", "dynamic")
     async def unregister_by_key(self, key: Tuple[str, str]):
-        """根据 key 删除模型（供 ModelSynchronizer 调用）
+        """根据 key 删除模型（供 ModelSynchronizer 调用，带排空）
 
         Args:
             key: (run_id, model_name) 元组
         """
-        self._dynamic_configs.pop(key, None)
-        self._last_access_time.pop(key, None)
-        removed = self._processor_cache.pop(key, None)
-        if removed:
-            await self._release_processor_async(removed)
+        await self._drain_and_release(key)
         logger.info(f"模型已注销: run_id={key[0]}, model_name={key[1]}")
 
     async def full_sync(self, db_models: List[ModelConfig]):
@@ -364,22 +414,26 @@ class ProcessorManager:
                     existing.api_key != config.api_key or
                     existing.tool_parser != config.tool_parser or
                     existing.reasoning_parser != config.reasoning_parser):
-                    # 配置变更，更新 config 并淘汰旧 Processor
+                    # 配置变更，更新 config 并排空淘汰旧 Processor
                     self._dynamic_configs[key] = config
+                    processor = self._processor_cache.pop(key, None)
                     self._last_access_time.pop(key, None)
-                    old = self._processor_cache.pop(key, None)
-                    if old:
-                        await self._release_processor_async(old)
+                    if processor:
+                        processor.mark_draining()
+                        if processor.inflight_count > 0:
+                            drained = await processor.wait_drained(timeout=self._drain_timeout)
+                            if not drained:
+                                logger.warning(
+                                    f"全量同步排空超时: {key}, "
+                                    f"inflight={processor.inflight_count}"
+                                )
+                        await self._release_processor_async(processor)
                     logger.info(f"全量同步 - 配置变更，缓存已失效: {key}")
 
-        # 删除不在数据库中的模型
+        # 删除不在数据库中的模型（带排空）
         to_remove = local_model_keys - db_model_keys
         for key in to_remove:
-            self._dynamic_configs.pop(key, None)
-            self._last_access_time.pop(key, None)
-            old = self._processor_cache.pop(key, None)
-            if old:
-                await self._release_processor_async(old)
+            await self._drain_and_release(key)
             logger.info(f"全量同步 - 已删除: run_id={key[0]}, model_name={key[1]}")
 
     # ========== 公开注册接口 ==========
@@ -532,6 +586,14 @@ class ProcessorManager:
                 orphaned = self._processor_cache.pop(key, None)
                 self._last_access_time.pop(key, None)
                 if orphaned:
+                    orphaned.mark_draining()
+                    if orphaned.inflight_count > 0:
+                        drained = await orphaned.wait_drained(timeout=self._drain_timeout)
+                        if not drained:
+                            logger.warning(
+                                f"[{model_name}] DB 回滚排空超时: "
+                                f"inflight={orphaned.inflight_count}, 强制释放"
+                            )
                     await self._release_processor_async(orphaned)
                     logger.warning(
                         f"[{model_name}] DB 回滚: 清理了缓存中的孤儿 Processor, "
@@ -560,11 +622,7 @@ class ProcessorManager:
 
         # 优先从 dynamic_configs 删除
         if key in self._dynamic_configs:
-            del self._dynamic_configs[key]
-            self._last_access_time.pop(key, None)
-            removed = self._processor_cache.pop(key, None)
-            if removed:
-                await self._release_processor_async(removed)
+            await self._drain_and_release(key)
             logger.info(f"[{model_name}] 删除动态模型成功: run_id={run_id}")
             emit(EVENT_MODEL_LIFECYCLE, action="unregister",
                  model=model_name, run_id=run_id, model_type="dynamic")
@@ -782,15 +840,17 @@ class ProcessorManager:
                 logger.error(f"空闲淘汰循环异常: {e}", exc_info=True)
 
     async def _evict_idle_processors(self):
-        """淘汰所有超时未使用的 Processor"""
+        """淘汰所有超时未使用且无 in-flight 请求的 Processor"""
         if not self._processor_cache:
             return
 
         now = time.monotonic()
-        keys_to_evict = [
-            key for key, last_time in self._last_access_time.items()
-            if now - last_time > self._idle_timeout
-        ]
+        keys_to_evict = []
+        for key, last_time in self._last_access_time.items():
+            if now - last_time > self._idle_timeout:
+                processor = self._processor_cache.get(key)
+                if processor is not None and processor.inflight_count == 0:
+                    keys_to_evict.append(key)
 
         if not keys_to_evict:
             return
@@ -806,8 +866,37 @@ class ProcessorManager:
                 )
 
     async def clear_cache(self):
-        """清理所有缓存中的 Processor 并释放资源"""
-        for key, processor in list(self._processor_cache.items()):
+        """清理所有缓存中的 Processor 并释放资源（带排空）
+
+        用于 shutdown 场景。标记所有 Processor 为 draining，并行等待排空。
+        不删除 config（与旧行为一致）。
+        """
+        if not self._processor_cache:
+            return
+
+        # 第一步：标记所有 cached processor 为 draining
+        for processor in self._processor_cache.values():
+            processor.mark_draining()
+
+        # 第二步：并行等待所有 in-flight 请求完成
+        draining_processors = [
+            p for p in self._processor_cache.values()
+            if p.inflight_count > 0
+        ]
+        if draining_processors:
+            results = await asyncio.gather(
+                *[p.wait_drained(timeout=self._drain_timeout) for p in draining_processors],
+                return_exceptions=True
+            )
+            for processor, result in zip(draining_processors, results):
+                if result is False or isinstance(result, Exception):
+                    logger.warning(
+                        f"clear_cache 排空超时或异常: model={processor.model}, "
+                        f"run_id={processor.run_id}"
+                    )
+
+        # 第三步：释放所有资源
+        for processor in self._processor_cache.values():
             await self._release_processor_async(processor)
         self._processor_cache.clear()
         self._last_access_time.clear()

@@ -318,6 +318,18 @@ async def chat_completions(
                 detail=f"模型 '{actual_model}' 未注册 (run_id={final_run_id})"
             )
 
+        # 检查 Processor 是否正在排空（拒绝新请求）
+        if not processor._acquire_request():
+            logger.warning(
+                f"Processor 正在排空，拒绝新请求: model={actual_model}, "
+                f"run_id={final_run_id}, inflight={processor.inflight_count}"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="模型正在更新中，请稍后重试",
+                headers={"Retry-After": "3"}
+            )
+
         # 根据是否流式选择处理方式
         if stream:
             # 流式处理 - 使用 Processor.process_stream
@@ -350,6 +362,8 @@ async def chat_completions(
                     yield f"data: {json.dumps({'error': error_body}, ensure_ascii=False)}\n\n"
                     yield "data: [DONE]\n\n"
                 finally:
+                    # 释放 processor in-flight 计数
+                    processor._release_request()
                     # 流式信号量在此处释放，确保在整个 SSE 流生命周期内持有
                     if acquired:
                         semaphore.release()
@@ -367,21 +381,30 @@ async def chat_completions(
             )
         else:
             # 非流式处理
-            context = await processor.process_request(
-                messages=messages,
-                request_id=request_id,
-                session_id=final_session_id,
-                run_id=final_run_id,
-                forward_headers=forward_headers,
-                **request_params
-            )
-
-            # 返回 OpenAI 格式响应
-            return context.raw_response
+            try:
+                context = await processor.process_request(
+                    messages=messages,
+                    request_id=request_id,
+                    session_id=final_session_id,
+                    run_id=final_run_id,
+                    forward_headers=forward_headers,
+                    **request_params
+                )
+                # 返回 OpenAI 格式响应
+                return context.raw_response
+            finally:
+                processor._release_request()
 
     except HTTPException:
         raise
     except Exception as e:
+        # 补偿性释放：若 _acquire_request 成功后、generate_stream finally 执行前发生异常
+        # （如 StreamingResponse 构造失败），需在此处补 release。
+        # _release_request 有 <= 0 保护，重复调用安全。
+        # 用 locals() 防御：processor 可能尚未赋值（异常在赋值前发生）
+        _proc = locals().get('processor')
+        if _proc is not None and getattr(_proc, 'inflight_count', 0) > 0:
+            _proc._release_request()
         logger.exception(f"聊天补全请求处理失败: {str(e)}")
         error_detail, status_code = build_error_response(request_id, e)
         raise HTTPException(status_code=status_code, detail=error_detail)

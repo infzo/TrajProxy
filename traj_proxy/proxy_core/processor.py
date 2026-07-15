@@ -5,6 +5,7 @@ Processor - 统一请求处理器
 提供统一的非流式和流式处理接口。
 """
 
+import asyncio
 from typing import Optional, Dict, Any, AsyncIterator
 from datetime import datetime
 import traceback
@@ -82,6 +83,12 @@ class Processor:
         self.reasoning_parser_name = reasoning_parser
         self._tokenizer = tokenizer
 
+        # In-flight 请求跟踪（优雅排空）
+        self._inflight_count: int = 0
+        self._is_draining: bool = False
+        self._drain_complete = asyncio.Event()
+        self._drain_complete.set()  # 初始无请求，drain 视为完成
+
         # 从传入的配置读取 token_in_token_out
         if config:
             self.token_in_token_out = config.get("token_in_token_out", False)
@@ -93,6 +100,58 @@ class Processor:
             self._pipeline = self._create_token_pipeline()
         else:
             self._pipeline = self._create_direct_pipeline()
+
+    # ==================== In-flight 请求跟踪 ====================
+
+    def _acquire_request(self) -> bool:
+        """标记一个新请求开始使用此 Processor
+
+        Returns:
+            True 表示获取成功，False 表示 Processor 正在排空，应拒绝新请求
+        """
+        if self._is_draining:
+            return False
+        self._inflight_count += 1
+        self._drain_complete.clear()
+        return True
+
+    def _release_request(self) -> None:
+        """标记一个请求完成"""
+        self._inflight_count -= 1
+        if self._inflight_count <= 0:
+            self._inflight_count = 0
+            self._drain_complete.set()
+
+    def mark_draining(self) -> None:
+        """标记 Processor 为 draining 状态，拒绝新请求但允许 in-flight 请求完成"""
+        self._is_draining = True
+        if self._inflight_count == 0:
+            self._drain_complete.set()
+
+    @property
+    def is_draining(self) -> bool:
+        """是否正在排空"""
+        return self._is_draining
+
+    @property
+    def inflight_count(self) -> int:
+        """当前正在处理的请求数"""
+        return self._inflight_count
+
+    async def wait_drained(self, timeout: float) -> bool:
+        """等待所有 in-flight 请求完成
+
+        Args:
+            timeout: 最大等待秒数
+
+        Returns:
+            True 表示排空完成，False 表示超时
+        """
+        try:
+            await asyncio.wait_for(self._drain_complete.wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
 
     def _create_direct_pipeline(self) -> BasePipeline:
         """创建直接转发 Pipeline"""

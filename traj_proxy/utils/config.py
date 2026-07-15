@@ -230,6 +230,19 @@ def get_processor_idle_timeout() -> int:
     return get_processor_manager_config().get("processor_idle_timeout", 300)
 
 
+def get_processor_drain_timeout() -> int:
+    """
+    获取 Processor 排空超时秒数
+
+    淘汰/删除 Processor 时，等待 in-flight 请求完成的最大时间。
+    超时后强制释放资源。
+
+    Returns:
+        排空超时秒数，默认 30
+    """
+    return get_processor_manager_config().get("processor_drain_timeout", 30)
+
+
 def get_infer_client_config() -> Dict:
     """
     获取 InferClient 配置
