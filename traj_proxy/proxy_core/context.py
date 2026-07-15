@@ -97,6 +97,7 @@ class ProcessContext:
     # ========== 流式处理状态 ==========
     is_stream: bool = False                    # 是否流式请求
     pipeline_mode: str = "direct"               # 管道模式: "direct" | "tito"
+    api_format: str = "openai"                  # API 协议格式: "openai" | "anthropic"
     base_url: str = "unknown"                   # 推理服务地址（InferClient.base_url）
     reasoning_ended: bool = False              # 推理阶段是否已结束（三阶段状态机）
     stream_buffer_text: str = ""               # 流式累积的响应文本

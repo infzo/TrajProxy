@@ -583,6 +583,50 @@
         line-height: 1.6;
     }
 
+    /* Anthropic 工具结果块样式 */
+    .tool-result-block {
+        background: rgba(245, 158, 11, 0.06);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        border-radius: var(--radius-sm);
+        padding: 8px 12px;
+        margin-top: 8px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+    }
+    .tool-result-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #fbbf24;
+    }
+    .tool-result-id { color: var(--text-dim); font-size: 11px; }
+    .tool-result-content {
+        color: var(--text-muted);
+        white-space: pre-wrap;
+        margin-top: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+
+    /* Anthropic 元信息标签 */
+    .anthropic-meta {
+        display: inline-flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+        font-size: 11px;
+        color: var(--text-dim);
+    }
+    .anthropic-meta span {
+        background: rgba(0,0,0,0.2);
+        padding: 2px 8px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-color);
+    }
+
     .chat-separator {
         text-align: center;
         color: var(--text-dim);
@@ -2096,9 +2140,18 @@ function sanitizeFileName(name) {
 
 /**
  * 从 record 中提取对话消息列表
- * 按顺序返回 OpenAI 格式的 messages 数组
+ * 按顺序返回 messages 数组
  */
 function extractConversation(record) {
+    // 检测是否为 Anthropic 格式
+    const isAnthropic = (record.raw_response && record.raw_response.type === 'message')
+                     || (record.raw_request && record.raw_request.system !== undefined && record.raw_request.messages !== undefined);
+
+    if (isAnthropic) {
+        return extractAnthropicConversation(record);
+    }
+
+    // ===== 以下为 OpenAI 格式处理逻辑（不变） =====
     const messages = [];
 
     // 1. 提取请求消息
@@ -2143,6 +2196,66 @@ function extractConversation(record) {
     }
 
     // 3. 如果有错误且没有消息，用错误信息构造一条
+    if (messages.length === 0 && record.error) {
+        messages.push({role: 'system', content: `[Error] ${record.error}`});
+    }
+
+    return messages;
+}
+
+/**
+ * 检测 content 是否为 Anthropic content blocks 数组
+ * 例如: [{type: "text", text: "..."}, {type: "tool_use", ...}, {type: "thinking", ...}]
+ */
+function isAnthropicBlocks(content) {
+    if (!Array.isArray(content) || content.length === 0) return false;
+    return content.some(b => b && typeof b === 'object'
+        && ['text', 'tool_use', 'tool_result', 'thinking', 'image'].includes(b.type));
+}
+
+/**
+ * 从 Anthropic 格式的 record 中提取对话消息列表
+ * Anthropic 的 system 在请求体顶级，content 可以是字符串或 blocks 数组
+ */
+function extractAnthropicConversation(record) {
+    const messages = [];
+
+    // 1. System message（Anthropic 的 system 在请求体顶级，不在 messages 里）
+    const system = record.raw_request && record.raw_request.system;
+    if (system) {
+        messages.push({role: 'system', content: system});
+    }
+
+    // 2. 请求消息
+    const reqMsgs = record.messages || (record.raw_request && record.raw_request.messages) || [];
+    if (Array.isArray(reqMsgs)) {
+        reqMsgs.forEach(m => messages.push({...m}));
+    }
+
+    // 3. 响应消息
+    const rawResp = record.raw_response;
+    if (rawResp && rawResp.type === 'message') {
+        // 构建完整的 Anthropic assistant 消息，附带元数据
+        messages.push({
+            role: 'assistant',
+            content: rawResp.content || [],
+            _anthropic_meta: {
+                id: rawResp.id,
+                model: rawResp.model,
+                stop_reason: rawResp.stop_reason,
+                usage: rawResp.usage
+            }
+        });
+    } else if (record.response_text) {
+        messages.push({role: 'assistant', content: record.response_text});
+    } else if (record.text_response) {
+        const textResp = typeof record.text_response === 'string'
+            ? record.text_response
+            : JSON.stringify(record.text_response, null, 2);
+        messages.push({role: 'assistant', content: textResp});
+    }
+
+    // 4. 错误兜底
     if (messages.length === 0 && record.error) {
         messages.push({role: 'system', content: `[Error] ${record.error}`});
     }
@@ -2218,7 +2331,7 @@ function renderChatView(messages, record) {
         html += `<div class="chat-msg ${escapeHtml(role)}">`;
         html += `<div class="chat-role"><span class="chat-role-icon">${icon}</span> ${escapeHtml(name)}`;
 
-        // Tool 消息显示 tool_call_id
+        // Tool 消息显示 tool_call_id（仅 OpenAI 格式）
         if (role === 'tool' && msg.tool_call_id) {
             html += ` <span style="color:var(--text-dim);font-weight:400;font-size:10px;">(${escapeHtml(msg.tool_call_id)})</span>`;
         }
@@ -2226,97 +2339,318 @@ function renderChatView(messages, record) {
 
         // Assistant 消息特殊处理：区分思考、工具、正常输出
         if (role === 'assistant') {
-            // 1. 渲染 reasoning_content (思考内容) - 默认完全折叠
-            const reasoningContent = msg.reasoning_content || msg.reasoning;
-            if (reasoningContent) {
-                const reasoningStr = formatMessageContent(reasoningContent);
-                if (reasoningStr) {
-                    html += `<div class="thinking-block">`;
-                    html += `<div class="thinking-header">&#128173; 思考过程 <span style="font-weight:400;color:var(--text-dim)">(${reasoningStr.length} 字符)</span></div>`;
-                    html += `<div class="thinking-content hidden" id="thinking-${i}">${escapeHtml(reasoningStr)}</div>`;
-                    html += `<button class="thinking-toggle" onclick="toggleThinking(${i})">展开</button>`;
-                    html += `</div>`;
-                }
-            }
 
-            // 2. 渲染 tool_calls (工具调用)
-            if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-                msg.tool_calls.forEach((tc, tcIdx) => {
-                    const fn = tc.function || {};
-                    const fnName = fn.name || 'unknown';
-                    const fnArgs = fn.arguments || '{}';
-                    let argsStr;
-                    try {
-                        argsStr = typeof fnArgs === 'string' ? JSON.stringify(JSON.parse(fnArgs), null, 2) : JSON.stringify(fnArgs, null, 2);
-                    } catch { argsStr = String(fnArgs); }
+            // === Anthropic content blocks 渲染分支 ===
+            if (isAnthropicBlocks(msg.content)) {
+                msg.content.forEach((block, blockIdx) => {
+                    switch (block.type) {
+                        case 'thinking': {
+                            // Anthropic 思考块：可折叠，与现有 reasoning_content 样式一致
+                            const thinkingText = block.thinking || '';
+                            if (thinkingText) {
+                                const thinkId = `anthr-think-${i}-${blockIdx}`;
+                                html += `<div class="thinking-block">`;
+                                html += `<div class="thinking-header">&#128173; 思考过程 <span style="font-weight:400;color:var(--text-dim)">(${thinkingText.length} 字符)</span></div>`;
+                                html += `<div class="thinking-content hidden" id="${thinkId}">${escapeHtml(thinkingText)}</div>`;
+                                html += `<button class="thinking-toggle" onclick="toggleAnthropicThinking('${thinkId}')">展开</button>`;
+                                html += `</div>`;
+                            }
+                            break;
+                        }
+                        case 'tool_use': {
+                            // Anthropic 工具调用：复用 tool-call-block 样式
+                            const fnName = block.name || 'unknown';
+                            const fnInput = block.input || {};
+                            let argsStr;
+                            try {
+                                argsStr = typeof fnInput === 'string'
+                                    ? JSON.stringify(JSON.parse(fnInput), null, 2)
+                                    : JSON.stringify(fnInput, null, 2);
+                            } catch { argsStr = String(fnInput); }
 
-                    html += `<div class="tool-call-block">`;
-                    html += `<div class="tool-call-header">`;
-                    html += `<span class="tool-call-name">&#128295; ${escapeHtml(fnName)}</span>`;
-                    if (tc.id) html += `<span class="tool-call-id">${escapeHtml(tc.id)}</span>`;
-                    html += `</div>`;
-                    html += `<div class="tool-call-args">${escapeHtml(argsStr)}</div>`;
-                    html += `</div>`;
+                            html += `<div class="tool-call-block">`;
+                            html += `<div class="tool-call-header">`;
+                            html += `<span class="tool-call-name">&#128295; ${escapeHtml(fnName)}</span>`;
+                            if (block.id) html += `<span class="tool-call-id">${escapeHtml(block.id)}</span>`;
+                            html += `</div>`;
+                            html += `<div class="tool-call-args">${escapeHtml(argsStr)}</div>`;
+                            html += `</div>`;
+                            break;
+                        }
+                        case 'text': {
+                            // Anthropic 文本输出块
+                            const textContent = block.text || '';
+                            if (textContent) {
+                                const textId = `anthr-text-${i}-${blockIdx}`;
+                                html += `<div class="output-block">`;
+                                html += `<div class="output-header">&#128172; 输出内容</div>`;
+                                if (textContent.length > CHAT_COLLAPSE_LEN) {
+                                    const shortContent = textContent.substring(0, CHAT_COLLAPSE_LEN);
+                                    html += `<div class="output-content" id="${textId}" style="max-height:200px;overflow:hidden;position:relative">${escapeHtml(shortContent)}</div>`;
+                                    html += `<button class="chat-expand-btn" onclick="toggleAnthropicBlock('${textId}')">展开全文 (${textContent.length} 字符)</button>`;
+                                    html += `<div class="output-content hidden" id="${textId}-full">${escapeHtml(textContent)}</div>`;
+                                } else {
+                                    html += `<div class="output-content">${escapeHtml(textContent)}</div>`;
+                                }
+                                html += `</div>`;
+                            }
+                            break;
+                        }
+                        case 'image': {
+                            html += `<div class="output-block">`;
+                            html += `<div class="output-header">&#128247; 图片</div>`;
+                            html += `<div class="output-content" style="color:var(--text-dim)">[Image content]</div>`;
+                            html += `</div>`;
+                            break;
+                        }
+                        default: {
+                            // 未知 block 类型：JSON 打印
+                            const defaultStr = JSON.stringify(block, null, 2);
+                            html += `<div class="output-block">`;
+                            html += `<div class="output-header">&#9679; ${escapeHtml(block.type || 'unknown')} block</div>`;
+                            html += `<div class="output-content">${escapeHtml(defaultStr)}</div>`;
+                            html += `</div>`;
+                            break;
+                        }
+                    }
                 });
-            }
 
-            // 3. 渲染正常输出内容 (content)
-            const contentStr = formatMessageContent(msg.content);
-            if (contentStr) {
-                html += `<div class="output-block">`;
-                html += `<div class="output-header">&#128172; 输出内容</div>`;
-                if (contentStr.length > CHAT_COLLAPSE_LEN) {
-                    const shortContent = contentStr.substring(0, CHAT_COLLAPSE_LEN);
-                    html += `<div class="output-content chat-content-collapsed" id="chat-content-${i}">${escapeHtml(shortContent)}</div>`;
-                    html += `<button class="chat-expand-btn" onclick="expandChatMsg(${i}, true)">展开全文 (${contentStr.length} 字符)</button>`;
-                    html += `<div class="output-content hidden" id="chat-content-full-${i}">${escapeHtml(contentStr)}</div>`;
-                    html += `<div class="output-content hidden" id="chat-content-short-${i}">${escapeHtml(shortContent)}</div>`;
-                } else {
-                    html += `<div class="output-content">${escapeHtml(contentStr)}</div>`;
+                // 渲染 Anthropic 响应元信息（model / stop_reason / usage / id）
+                if (msg._anthropic_meta) {
+                    const meta = msg._anthropic_meta;
+                    html += `<div class="anthropic-meta">`;
+                    if (meta.model) html += `<span>model: ${escapeHtml(meta.model)}</span>`;
+                    if (meta.stop_reason) html += `<span>stop: ${escapeHtml(meta.stop_reason)}</span>`;
+                    if (meta.usage) {
+                        if (meta.usage.input_tokens !== undefined)  html += `<span>in: ${escapeHtml(String(meta.usage.input_tokens))}</span>`;
+                        if (meta.usage.output_tokens !== undefined) html += `<span>out: ${escapeHtml(String(meta.usage.output_tokens))}</span>`;
+                    }
+                    if (meta.id) html += `<span style="opacity:0.5">${escapeHtml(meta.id)}</span>`;
+                    html += `</div>`;
                 }
-                html += `</div>`;
-            }
+
+            } else {
+                // ===== 原有 OpenAI 格式渲染（不变） =====
+
+                // 1. 渲染 reasoning_content (思考内容) - 默认完全折叠
+                const reasoningContent = msg.reasoning_content || msg.reasoning;
+                if (reasoningContent) {
+                    const reasoningStr = formatMessageContent(reasoningContent);
+                    if (reasoningStr) {
+                        html += `<div class="thinking-block">`;
+                        html += `<div class="thinking-header">&#128173; 思考过程 <span style="font-weight:400;color:var(--text-dim)">(${reasoningStr.length} 字符)</span></div>`;
+                        html += `<div class="thinking-content hidden" id="thinking-${i}">${escapeHtml(reasoningStr)}</div>`;
+                        html += `<button class="thinking-toggle" onclick="toggleThinking(${i})">展开</button>`;
+                        html += `</div>`;
+                    }
+                }
+
+                // 2. 渲染 tool_calls (工具调用)
+                if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+                    msg.tool_calls.forEach((tc, tcIdx) => {
+                        const fn = tc.function || {};
+                        const fnName = fn.name || 'unknown';
+                        const fnArgs = fn.arguments || '{}';
+                        let argsStr;
+                        try {
+                            argsStr = typeof fnArgs === 'string' ? JSON.stringify(JSON.parse(fnArgs), null, 2) : JSON.stringify(fnArgs, null, 2);
+                        } catch { argsStr = String(fnArgs); }
+
+                        html += `<div class="tool-call-block">`;
+                        html += `<div class="tool-call-header">`;
+                        html += `<span class="tool-call-name">&#128295; ${escapeHtml(fnName)}</span>`;
+                        if (tc.id) html += `<span class="tool-call-id">${escapeHtml(tc.id)}</span>`;
+                        html += `</div>`;
+                        html += `<div class="tool-call-args">${escapeHtml(argsStr)}</div>`;
+                        html += `</div>`;
+                    });
+                }
+
+                // 3. 渲染正常输出内容 (content)
+                const contentStr = formatMessageContent(msg.content);
+                if (contentStr) {
+                    html += `<div class="output-block">`;
+                    html += `<div class="output-header">&#128172; 输出内容</div>`;
+                    if (contentStr.length > CHAT_COLLAPSE_LEN) {
+                        const shortContent = contentStr.substring(0, CHAT_COLLAPSE_LEN);
+                        html += `<div class="output-content chat-content-collapsed" id="chat-content-${i}">${escapeHtml(shortContent)}</div>`;
+                        html += `<button class="chat-expand-btn" onclick="expandChatMsg(${i}, true)">展开全文 (${contentStr.length} 字符)</button>`;
+                        html += `<div class="output-content hidden" id="chat-content-full-${i}">${escapeHtml(contentStr)}</div>`;
+                        html += `<div class="output-content hidden" id="chat-content-short-${i}">${escapeHtml(shortContent)}</div>`;
+                    } else {
+                        html += `<div class="output-content">${escapeHtml(contentStr)}</div>`;
+                    }
+                    html += `</div>`;
+                }
+
+            } // end OpenAI 分支
+
         } else {
-            // 非 assistant 消息：常规渲染
-            const contentStr = formatMessageContent(msg.content);
-            if (contentStr) {
-                if (contentStr.length > CHAT_COLLAPSE_LEN) {
-                    const shortContent = contentStr.substring(0, CHAT_COLLAPSE_LEN);
-                    html += `<div class="chat-content chat-content-collapsed" id="chat-content-${i}">${escapeHtml(shortContent)}</div>`;
-                    html += `<button class="chat-expand-btn" onclick="expandChatMsg(${i}, true)">展开全文 (${contentStr.length} 字符)</button>`;
-                    html += `<div class="chat-content hidden" id="chat-content-full-${i}">${escapeHtml(contentStr)}</div>`;
-                    html += `<div class="chat-content hidden" id="chat-content-short-${i}">${escapeHtml(shortContent)}</div>`;
-                } else {
-                    html += `<div class="chat-content">${escapeHtml(contentStr)}</div>`;
-                }
-            }
+            // 非 assistant 消息
 
-            // tool 角色的 tool_calls
-            if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
-                msg.tool_calls.forEach((tc, tcIdx) => {
-                    const fn = tc.function || {};
-                    const fnName = fn.name || 'unknown';
-                    const fnArgs = fn.arguments || '{}';
-                    let argsStr;
-                    try {
-                        argsStr = typeof fnArgs === 'string' ? JSON.stringify(JSON.parse(fnArgs), null, 2) : JSON.stringify(fnArgs, null, 2);
-                    } catch { argsStr = String(fnArgs); }
+            // === Anthropic user/system 消息渲染分支（tool_result / text 混合） ===
+            if (isAnthropicBlocks(msg.content)) {
+                // 提取所有文本块和 tool_result 块
+                const textBlocks = msg.content.filter(b => b && b.type === 'text');
+                const toolResultBlocks = msg.content.filter(b => b && b.type === 'tool_result');
+                const otherBlocks = msg.content.filter(b => b && b.type !== 'text' && b.type !== 'tool_result');
 
-                    html += `<div class="tool-call-block">`;
-                    html += `<div class="tool-call-header">`;
-                    html += `<span class="tool-call-name">&#128295; ${escapeHtml(fnName)}</span>`;
-                    if (tc.id) html += `<span class="tool-call-id">${escapeHtml(tc.id)}</span>`;
+                // 渲染文本块
+                textBlocks.forEach((block, bIdx) => {
+                    const textContent = block.text || '';
+                    if (textContent) {
+                        const textId = `anthr-user-text-${i}-${bIdx}`;
+                        if (textContent.length > CHAT_COLLAPSE_LEN) {
+                            const shortContent = textContent.substring(0, CHAT_COLLAPSE_LEN);
+                            html += `<div class="chat-content" id="${textId}" style="max-height:200px;overflow:hidden;position:relative">${escapeHtml(shortContent)}</div>`;
+                            html += `<button class="chat-expand-btn" onclick="toggleAnthropicBlock('${textId}')">展开全文 (${textContent.length} 字符)</button>`;
+                            html += `<div class="chat-content hidden" id="${textId}-full">${escapeHtml(textContent)}</div>`;
+                        } else {
+                            html += `<div class="chat-content">${escapeHtml(textContent)}</div>`;
+                        }
+                    }
+                });
+
+                // 渲染 tool_result 块（Anthropic 格式：工具返回结果在 user 消息中）
+                toolResultBlocks.forEach((block, bIdx) => {
+                    // content 可能是字符串、数组（blocks）或 null
+                    let resultContent = '';
+                    if (typeof block.content === 'string') {
+                        resultContent = block.content;
+                    } else if (Array.isArray(block.content)) {
+                        // Anthropic tool_result.content 可以是 blocks 数组
+                        resultContent = block.content
+                            .map(p => (p && typeof p === 'object' && p.type === 'text') ? p.text : JSON.stringify(p, null, 2))
+                            .join('\n');
+                    } else if (block.content !== null && block.content !== undefined) {
+                        resultContent = JSON.stringify(block.content, null, 2);
+                    }
+
+                    const is_error = block.is_error ? ' ⚠️ error' : '';
+                    html += `<div class="tool-result-block">`;
+                    html += `<div class="tool-result-header">&#128295; Tool Result${is_error ? '<span style="color:#ef8a8a">' + is_error + '</span>' : ''}`;
+                    if (block.tool_use_id) html += ` <span class="tool-result-id">${escapeHtml(block.tool_use_id)}</span>`;
                     html += `</div>`;
-                    html += `<div class="tool-call-args">${escapeHtml(argsStr)}</div>`;
+
+                    if (resultContent) {
+                        const resultId = `anthr-result-${i}-${bIdx}`;
+                        if (resultContent.length > CHAT_COLLAPSE_LEN) {
+                            const shortResult = resultContent.substring(0, CHAT_COLLAPSE_LEN);
+                            html += `<div class="tool-result-content" id="${resultId}" style="max-height:200px;overflow:hidden;position:relative">${escapeHtml(shortResult)}</div>`;
+                            html += `<button class="chat-expand-btn" onclick="toggleAnthropicBlock('${resultId}')">展开全文 (${resultContent.length} 字符)</button>`;
+                            html += `<div class="tool-result-content hidden" id="${resultId}-full">${escapeHtml(resultContent)}</div>`;
+                        } else {
+                            html += `<div class="tool-result-content">${escapeHtml(resultContent)}</div>`;
+                        }
+                    }
                     html += `</div>`;
                 });
-            }
+
+                // 渲染其他未知类型块
+                otherBlocks.forEach((block) => {
+                    const imgHint = (block.type === 'image') ? '&#128247; 图片' : `&#9679; ${escapeHtml(block.type || 'unknown')} block`;
+                    html += `<div class="chat-content" style="color:var(--text-dim)">${imgHint}${block.type !== 'image' ? '<br>' + escapeHtml(JSON.stringify(block, null, 2)) : ''}</div>`;
+                });
+
+            } else {
+                // ===== 原有非 assistant 渲染逻辑（不变） =====
+
+                const contentStr = formatMessageContent(msg.content);
+                if (contentStr) {
+                    if (contentStr.length > CHAT_COLLAPSE_LEN) {
+                        const shortContent = contentStr.substring(0, CHAT_COLLAPSE_LEN);
+                        html += `<div class="chat-content chat-content-collapsed" id="chat-content-${i}">${escapeHtml(shortContent)}</div>`;
+                        html += `<button class="chat-expand-btn" onclick="expandChatMsg(${i}, true)">展开全文 (${contentStr.length} 字符)</button>`;
+                        html += `<div class="chat-content hidden" id="chat-content-full-${i}">${escapeHtml(contentStr)}</div>`;
+                        html += `<div class="chat-content hidden" id="chat-content-short-${i}">${escapeHtml(shortContent)}</div>`;
+                    } else {
+                        html += `<div class="chat-content">${escapeHtml(contentStr)}</div>`;
+                    }
+                }
+
+                // tool 角色的 tool_calls（OpenAI 格式）
+                if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                    msg.tool_calls.forEach((tc, tcIdx) => {
+                        const fn = tc.function || {};
+                        const fnName = fn.name || 'unknown';
+                        const fnArgs = fn.arguments || '{}';
+                        let argsStr;
+                        try {
+                            argsStr = typeof fnArgs === 'string' ? JSON.stringify(JSON.parse(fnArgs), null, 2) : JSON.stringify(fnArgs, null, 2);
+                        } catch { argsStr = String(fnArgs); }
+
+                        html += `<div class="tool-call-block">`;
+                        html += `<div class="tool-call-header">`;
+                        html += `<span class="tool-call-name">&#128295; ${escapeHtml(fnName)}</span>`;
+                        if (tc.id) html += `<span class="tool-call-id">${escapeHtml(tc.id)}</span>`;
+                        html += `</div>`;
+                        html += `<div class="tool-call-args">${escapeHtml(argsStr)}</div>`;
+                        html += `</div>`;
+                    });
+                }
+            } // end OpenAI 非 assistant 分支
         }
 
         html += `</div>`;
     });
 
     container.innerHTML = html;
+}
+
+/**
+ * 切换 Anthropic 思考块折叠状态（单元素折叠：hidden ↔ visible）
+ * 与现有 toggleThinking(idx) 逻辑一致，但使用元素 ID 而非消息索引
+ * @param {string} id - thinking 内容元素的 id
+ */
+function toggleAnthropicThinking(id) {
+    const contentEl = document.getElementById(id);
+    if (!contentEl) return;
+    const btn = contentEl.nextElementSibling;
+    if (!btn) return;
+
+    const isHidden = contentEl.classList.contains('hidden');
+    if (isHidden) {
+        contentEl.classList.remove('hidden');
+        btn.textContent = '收起';
+    } else {
+        contentEl.classList.add('hidden');
+        btn.textContent = '展开';
+    }
+}
+
+/**
+ * 切换 Anthropic 内容块折叠状态（通用：text / tool_result 均可使用）
+ * 使用 short 元素 + full 元素交替显示，full 元素的 id = shortId + '-full'
+ * @param {string} blockId - 短内容元素的 id
+ */
+function toggleAnthropicBlock(blockId) {
+    const shortEl = document.getElementById(blockId);
+    const fullEl = document.getElementById(blockId + '-full');
+    if (!shortEl || !fullEl) return;
+
+    // 按钮就是调用者的上一个兄弟，或直接通过 event.target 取
+    const btn = event && event.target ? event.target : null;
+
+    const isFullVisible = !fullEl.classList.contains('hidden');
+    if (isFullVisible) {
+        // 当前展开 → 折叠
+        shortEl.classList.remove('hidden');
+        shortEl.style.maxHeight = '200px';
+        shortEl.style.overflow = 'hidden';
+        fullEl.classList.add('hidden');
+        if (btn) {
+            // 尝试从全文长度恢复按钮文字
+            const fullLen = (fullEl.textContent || '').length;
+            btn.textContent = `展开全文 (${fullLen} 字符)`;
+        }
+    } else {
+        // 当前折叠 → 展开
+        shortEl.classList.add('hidden');
+        fullEl.classList.remove('hidden');
+        if (btn) {
+            btn.textContent = '收起';
+        }
+    }
 }
 
 /**

@@ -162,7 +162,8 @@ HEADER_BLACKLIST = {
     "host", "content-length", "content-type", "connection",
     "accept", "accept-encoding", "user-agent",
     # TrajProxy 内部使用
-    "authorization",      # 由 InferClient 独立管理
+    "authorization",      # OpenAI 认证，由 InferClient 独立管理
+    "x-api-key",          # Anthropic 认证，由 InferClient._build_anthropic_headers 透传管理
     "x-run-id",           # 已用于模型路由
     "x-session-id",       # 已用于会话存储
 }

@@ -201,6 +201,156 @@ class Processor:
 
     # ==================== 非流式处理接口 ====================
 
+    @property
+    def _anthropic_pipeline(self) -> BasePipeline:
+        """Lazy 创建 AnthropicDirectPipeline（透传模式，不受 token_in_token_out 影响）
+
+        Anthropic /v1/messages 走独立的直接转发管道，与 OpenAI 路径的
+        DirectPipeline / TokenPipeline 完全隔离，互不影响。
+        """
+        if getattr(self, "_anthropic_pipeline_cache", None) is None:
+            from traj_proxy.proxy_core.pipeline.anthropic_pipeline import AnthropicDirectPipeline
+            self._anthropic_pipeline_cache = AnthropicDirectPipeline(
+                model=self.model,
+                infer_client=self.infer_client,
+                request_repository=self.request_repository
+            )
+        return self._anthropic_pipeline_cache
+
+    async def process_anthropic_request(
+        self,
+        body: dict,
+        request_id: str,
+        session_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        forward_headers: Optional[Dict[str, str]] = None
+    ) -> ProcessContext:
+        """处理 Anthropic /v1/messages 非流式请求
+
+        与 process_request 平行的入口，但走 AnthropicDirectPipeline，
+        raw_request 为完整 Anthropic 请求体，raw_response 为 Anthropic Message。
+
+        Args:
+            body: 完整 Anthropic 请求体
+            request_id: 请求 ID
+            session_id: 原始会话 ID（可选）
+            run_id: 运行 ID（可选）
+            forward_headers: 需要转发到推理服务的 header（含 x-api-key）
+
+        Returns:
+            处理上下文，raw_response 为 Anthropic Message 响应
+        """
+        # 创建上下文（_create_context 已设置 start_time）
+        context = self._anthropic_pipeline._create_context(
+            request_id=request_id,
+            session_id=session_id,
+            run_id=run_id,
+            messages=body.get("messages", []),
+            request_params=body,
+            is_stream=False,
+            forward_headers=forward_headers or {}
+        )
+        context.api_format = "anthropic"
+        # 覆盖为完整 Anthropic 请求体（_create_context 默认构建的是 OpenAI 形状）
+        context.raw_request = dict(body)
+        context.base_url = getattr(self.infer_client, 'base_url', 'unknown') or 'unknown'
+
+        logger.info(
+            f"开始处理 Anthropic 请求: "
+            f"model={self.model}, messages_count={len(body.get('messages', []))}"
+        )
+
+        emit(EVENT_REQUEST_STARTED, model=self.model, is_stream=False,
+             max_concurrent=get_max_concurrent_requests())
+        exception: Optional[Exception] = None
+        try:
+            context = await self._anthropic_pipeline.process(
+                body.get("messages", []), context
+            )
+            return context
+        except Exception as e:
+            exception = e
+            logger.error(
+                f"Anthropic 处理请求异常: {str(e)}\n"
+                f"{traceback.format_exc()}"
+            )
+            raise
+        finally:
+            emit(EVENT_REQUEST_COMPLETED, context=context, exception=exception)
+
+    # ==================== 流式处理接口 ====================
+
+    async def process_anthropic_stream(
+        self,
+        body: dict,
+        request_id: str,
+        session_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        context_holder: Optional[dict] = None,
+        forward_headers: Optional[Dict[str, str]] = None
+    ) -> AsyncIterator[bytes]:
+        """处理 Anthropic /v1/messages 流式请求，yield 原始 SSE 字节
+
+        与 process_stream 平行的入口，但走 AnthropicDirectPipeline，
+        透传原始 SSE 文本（不附加 data: [DONE]）。
+
+        Args:
+            body: 完整 Anthropic 请求体
+            request_id: 请求 ID
+            session_id: 原始会话 ID（可选）
+            run_id: 运行 ID（可选）
+            context_holder: 可选容器，流式完成后存储上下文
+            forward_headers: 需要转发到推理服务的 header（含 x-api-key）
+
+        Yields:
+            原始 SSE 字节流
+        """
+        # 创建上下文（_create_context 已设置 start_time）
+        context = self._anthropic_pipeline._create_context(
+            request_id=request_id,
+            session_id=session_id,
+            run_id=run_id,
+            messages=body.get("messages", []),
+            request_params=body,
+            is_stream=True,
+            forward_headers=forward_headers or {}
+        )
+        context.api_format = "anthropic"
+        context.raw_request = dict(body)
+        context.base_url = getattr(self.infer_client, 'base_url', 'unknown') or 'unknown'
+
+        logger.info(
+            f"开始流式处理 Anthropic 请求: "
+            f"model={self.model}, messages_count={len(body.get('messages', []))}"
+        )
+
+        emit(EVENT_REQUEST_STARTED, model=self.model, is_stream=True,
+             max_concurrent=get_max_concurrent_requests())
+        exception: Optional[Exception] = None
+        try:
+            async for raw_sse in self._anthropic_pipeline.process_stream(
+                body.get("messages", []), context
+            ):
+                # pipeline yield 的是 str，编码为 bytes 供 StreamingResponse 使用
+                if isinstance(raw_sse, str):
+                    yield raw_sse.encode("utf-8")
+                else:
+                    yield raw_sse
+        except Exception as e:
+            exception = e
+            logger.error(
+                f"Anthropic 流式处理异常: {str(e)}\n"
+                f"{traceback.format_exc()}"
+            )
+            raise
+        finally:
+            # 将上下文写入容器
+            if context_holder is not None:
+                context_holder['context'] = context
+            emit(EVENT_REQUEST_COMPLETED, context=context, exception=exception)
+
+    # ==================== OpenAI 非流式处理接口 ====================
+
     async def process_request(
         self,
         messages: list,

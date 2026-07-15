@@ -18,6 +18,7 @@ class RouteRegistrar:
             chat_router,
             model_router,
         )
+        from traj_proxy.serve.anthropic_routes import anthropic_router
 
         # /v1/chat/completions - 无session-id的聊天
         self.app.include_router(chat_router, prefix="/v1", tags=["OpenAI Chat"])
@@ -27,6 +28,14 @@ class RouteRegistrar:
         self.app.include_router(chat_router, prefix="/s/{session_id}/v1", tags=["OpenAI Chat (Path-based, no run_id)"])
         # /models/* - 模型管理 API
         self.app.include_router(model_router, prefix="/models", tags=["Admin"])
+
+        # Anthropic Messages API
+        # /v1/messages - 无session-id的 Anthropic 消息
+        self.app.include_router(anthropic_router, prefix="/v1", tags=["Anthropic Messages"])
+        # /s/{run_id}/{session_id}/v1/messages - 带run_id和session_id的 Anthropic 消息
+        self.app.include_router(anthropic_router, prefix="/s/{run_id}/{session_id}/v1", tags=["Anthropic Messages (Path-based)"])
+        # /s/{session_id}/v1/messages - 仅带session_id的 Anthropic 消息（无run_id）
+        self.app.include_router(anthropic_router, prefix="/s/{session_id}/v1", tags=["Anthropic Messages (Path-based, no run_id)"])
 
     def register_transcript_routes(self):
         """注册 TranscriptProvider 相关路由"""

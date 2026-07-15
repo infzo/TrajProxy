@@ -442,5 +442,228 @@ class InferClient:
 
         return body
 
+    # --- Anthropic Messages 接口（临时透传支持） ---
+
+    def _build_anthropic_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        """构建 Anthropic 请求 headers（注入 x-api-key，不注入 Authorization）
+
+        Anthropic 认证使用 x-api-key header。此处使用模型注册时配置的
+        self.api_key 作为 x-api-key 注入，与 OpenAI 路径用 Authorization: Bearer
+        注入 self.api_key 的模式对齐（由 InferClient 独立管理认证）。
+        客户端的 x-api-key 已在路由层 HEADER_BLACKLIST 中剔除，不会透传。
+
+        Args:
+            extra_headers: 上层传入的转发 header（不含 x-api-key）
+
+        Returns:
+            合并后的请求 header 字典
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.api_key,
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        return headers
+
+    async def send_anthropic_messages(
+        self,
+        body: dict,
+        model: str,
+        extra_headers: Optional[Dict[str, str]] = None,
+        **kwargs: Any
+    ) -> Dict[str, Any]:
+        """转发 Anthropic /v1/messages 非流式请求
+
+        Args:
+            body: 完整 Anthropic 请求体
+            model: 模型名称（覆盖 body 中的 model）
+            extra_headers: 转发 header（含 x-api-key）
+            **kwargs: 保留扩展
+
+        Returns:
+            Anthropic Message 响应体
+        """
+        url = f"{self.base_url}/messages"
+        request_body = dict(body)
+        request_body["model"] = model
+        headers = self._build_anthropic_headers(extra_headers)
+        return await self._handle_anthropic_request(url, request_body, headers)
+
+    async def send_anthropic_messages_stream_raw(
+        self,
+        body: dict,
+        model: str,
+        extra_headers: Optional[Dict[str, str]] = None,
+        **kwargs: Any
+    ) -> AsyncIterator[str]:
+        """转发 Anthropic /v1/messages 流式请求，yield 原始 SSE 行
+
+        与 OpenAI 流式接口不同，此处不解析 JSON，直接透传原始 SSE 文本行
+        （含 event: 和 data: 行），由上层 pipeline 旁路解析。
+
+        Args:
+            body: 完整 Anthropic 请求体
+            model: 模型名称（覆盖 body 中的 model）
+            extra_headers: 转发 header（含 x-api-key）
+
+        Yields:
+            原始 SSE 字符串（每行含末尾换行）
+        """
+        url = f"{self.base_url}/messages"
+        request_body = dict(body)
+        request_body["model"] = model
+        headers = self._build_anthropic_headers(extra_headers)
+        async for raw_line in self._handle_anthropic_stream_request(url, request_body, headers):
+            yield raw_line
+
+    async def _handle_anthropic_request(
+        self,
+        url: str,
+        request_body: dict,
+        headers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """Anthropic 非流式请求（使用传入的 headers，不注入 Authorization）
+
+        与 _handle_request 的区别：不调用 _build_headers（不注入 Authorization），
+        完全使用上层传入的 headers（透传客户端的 x-api-key）。
+
+        Args:
+            url: 推理服务 /messages 地址
+            request_body: Anthropic 请求体
+            headers: 已构建好的请求 header
+
+        Returns:
+            Anthropic Message 响应体
+        """
+        client = await get_shared_client()
+        last_error: Optional[Exception] = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                logger.debug(f"Anthropic 请求: {url}")
+                response = await client.post(url, json=request_body, headers=headers)
+
+                if response.status_code in _RETRY_STATUS_CODES and attempt < self._max_retries:
+                    wait = 2 ** attempt
+                    logger.warning(
+                        f"Anthropic 请求返回 {response.status_code}，"
+                        f"第 {attempt + 1}/{self._max_retries} 次重试，等待 {wait}s"
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+
+                response.raise_for_status()
+                self._last_retry_count = attempt
+                return response.json()
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                if e.response.status_code in _RETRY_STATUS_CODES and attempt < self._max_retries:
+                    wait = 2 ** attempt
+                    logger.warning(
+                        f"Anthropic 请求返回 {e.response.status_code}，"
+                        f"第 {attempt + 1}/{self._max_retries} 次重试，等待 {wait}s"
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                self._last_retry_count = attempt
+                raise self._wrap_request_error(e)
+            except httpx.RequestError as e:
+                last_error = e
+                if attempt < self._max_retries:
+                    wait = 2 ** attempt
+                    logger.warning(
+                        f"Anthropic 请求异常: {e}，"
+                        f"第 {attempt + 1}/{self._max_retries} 次重试，等待 {wait}s"
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                self._last_retry_count = attempt
+                raise self._wrap_request_error(e)
+
+        # 不应到达此处，但保险起见
+        if last_error:
+            raise self._wrap_request_error(last_error)
+        raise InferServiceError("Anthropic 请求异常：重试逻辑异常退出")
+
+    async def _handle_anthropic_stream_request(
+        self,
+        url: str,
+        request_body: dict,
+        headers: Dict[str, str]
+    ) -> AsyncIterator[str]:
+        """Anthropic 流式请求（yield 原始 SSE 行，含 event: 和 data: 行，不解析 JSON）
+
+        与 _handle_stream_request 的区别：
+        - 不解析 data: 行的 JSON，原样透传文本行
+        - 空行（SSE 事件分隔符）也透传为 "\\n"
+        - 不识别 [DONE]（Anthropic 协议以 message_stop 事件结束）
+
+        Args:
+            url: 推理服务 /messages 地址
+            request_body: Anthropic 请求体
+            headers: 已构建好的请求 header
+
+        Yields:
+            原始 SSE 字符串（每行含末尾换行）
+        """
+        client = await get_shared_client()
+        # 流式请求的重试：仅在建立连接阶段（未 yield 数据时）重试
+        has_yielded = False
+        last_error: Optional[Exception] = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                logger.debug(f"Anthropic 流式请求: {url}")
+                async with client.stream("POST", url, json=request_body, headers=headers) as response:
+                    if response.status_code in _RETRY_STATUS_CODES:
+                        if not has_yielded and attempt < self._max_retries:
+                            wait = 2 ** attempt
+                            logger.warning(
+                                f"Anthropic 流式请求返回 {response.status_code}，"
+                                f"第 {attempt + 1}/{self._max_retries} 次重试，等待 {wait}s"
+                            )
+                            # 消费响应体以便复用连接
+                            await response.aread()
+                            await asyncio.sleep(wait)
+                            continue
+                        # 已 yield 数据或重试次数耗尽：不重试，直接抛出
+                        response.raise_for_status()
+
+                    response.raise_for_status()
+
+                    async for line in response.aiter_lines():
+                        if not line:
+                            # 空行作为 SSE 事件分隔符透传
+                            yield "\n"
+                            continue
+                        has_yielded = True
+                        yield f"{line}\n"
+                    return
+
+            except httpx.HTTPStatusError as e:
+                # 非重试状态码（400/500 等）：不重试，直接抛出业务异常
+                self._last_retry_count = attempt
+                raise self._wrap_request_error(e)
+            except httpx.RequestError as e:
+                last_error = e
+                if not has_yielded and attempt < self._max_retries:
+                    wait = 2 ** attempt
+                    logger.warning(
+                        f"Anthropic 流式请求异常: {e}，"
+                        f"第 {attempt + 1}/{self._max_retries} 次重试，等待 {wait}s"
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                # 已 yield 数据则不重试，避免数据重复
+                if has_yielded:
+                    logger.error(
+                        f"Anthropic 流式请求中途异常且已部分传输，放弃重试: {e}"
+                    )
+                self._last_retry_count = attempt
+                raise self._wrap_request_error(e)
+
+        if last_error:
+            raise self._wrap_request_error(last_error)
+
     def __repr__(self) -> str:
         return f"InferClient(httpx)(base_url={self.base_url})"

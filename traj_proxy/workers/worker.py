@@ -135,6 +135,8 @@ def classify_route(request: Request) -> str:
     method = request.method
     if "chat/completions" in path:
         return "chat_completions"
+    if "messages" in path:
+        return "anthropic_messages"
     if path.startswith("/trajectories"):
         return "trajectory_list" if path == "/trajectories" else "trajectory_detail"
     if path.startswith("/trajectory"):
@@ -230,6 +232,8 @@ class ProxyWorker:
             if model == "unknown":
                 if "/chat/completions" in url:
                     model = "chat"
+                elif "/messages" in url:
+                    model = "anthropic"
                 elif "/models" in url:
                     model = "models"
 
@@ -269,7 +273,7 @@ class ProxyWorker:
             """从路径中提取 session_id 并注入到请求头 x-session-id"""
             path = request.url.path
 
-            if path.startswith("/s/") and "/v1/chat/completions" in path:
+            if path.startswith("/s/") and ("/v1/chat/completions" in path or "/v1/messages" in path):
                 try:
                     parts = path.split("/")
                     if len(parts) >= 4 and parts[1] == "s" and parts[3] == "v1":
