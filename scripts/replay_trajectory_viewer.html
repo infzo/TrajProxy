@@ -1,0 +1,3345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trajectory Viewer Pro</title>
+<style>
+    /* ==================== CSS Variables & Reset ==================== */
+    :root {
+        --bg-body: #0f172a;       /* Slate 900 */
+        --bg-panel: #1e293b;      /* Slate 800 */
+        --bg-card: #1e293b;       /* Slate 800 */
+        --bg-card-hover: #334155; /* Slate 700 */
+        --bg-input: #0f172a;      /* Slate 900 */
+
+        --border-color: #334155;  /* Slate 700 */
+        --border-focus: #6366f1;  /* Indigo 500 */
+
+        --text-main: #f1f5f9;     /* Slate 100 */
+        --text-muted: #94a3b8;    /* Slate 400 */
+        --text-dim: #64748b;      /* Slate 500 */
+
+        --primary: #6366f1;       /* Indigo 500 */
+        --primary-hover: #4f46e5; /* Indigo 600 */
+        --danger: #ef4444;        /* Red 500 */
+        --success: #10b981;       /* Emerald 500 */
+        --warning: #f59e0b;       /* Amber 500 */
+
+        --radius-sm: 4px;
+        --radius-md: 8px;
+        --radius-lg: 12px;
+
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --shadow-glow: 0 0 15px rgba(99, 102, 241, 0.15);
+
+        --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
+
+    body {
+        font-family: var(--font-sans);
+        background-color: var(--bg-body);
+        color: var(--text-main);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-body); }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* ==================== Components ==================== */
+    button {
+        cursor: pointer;
+        border: none;
+        font-family: inherit;
+        transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+        background: var(--primary);
+        color: white;
+        padding: 6px 14px;
+        border-radius: var(--radius-sm);
+        font-weight: 500;
+        font-size: 13px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .btn-primary:hover { background: var(--primary-hover); box-shadow: 0 0 10px rgba(99,102,241,0.3); }
+    .btn-primary:disabled { background: var(--text-dim); cursor: not-allowed; opacity: 0.6; box-shadow: none; }
+
+    .btn-secondary {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-muted);
+        padding: 4px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+    }
+    .btn-secondary:hover { border-color: var(--text-muted); color: var(--text-main); background: var(--bg-card-hover); }
+    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary.active { background: rgba(99,102,241,0.15); border-color: var(--primary); color: #818cf8; }
+
+    input {
+        background: var(--bg-input);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+    input::placeholder { color: var(--text-dim); }
+
+    .badge {
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .badge-primary { background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+    .badge-danger { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    /* ==================== 自定义下拉框 ==================== */
+    .custom-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+    .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        min-width: 200px;
+        max-height: 300px;
+        overflow-y: auto;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        box-shadow: var(--shadow-md);
+        z-index: 100;
+        display: none;
+        margin-top: 2px;
+    }
+    .dropdown-menu.show { display: block; }
+    .dropdown-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: background 0.15s;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .dropdown-item:hover { background: rgba(99, 102, 241, 0.1); }
+    .dropdown-item:last-child { border-bottom: none; }
+    .dropdown-item-value { font-family: var(--font-mono); font-size: 12px; color: var(--text-main); }
+    .dropdown-item-meta { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+    .dropdown-empty {
+        padding: 12px;
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 12px;
+    }
+    .dropdown-loading {
+        padding: 12px;
+        text-align: center;
+    }
+
+    /* ==================== Layout ==================== */
+    .app-header {
+        height: 60px;
+        background: rgba(30, 41, 59, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        padding: 0 24px;
+        justify-content: space-between;
+        z-index: 50;
+    }
+
+    .header-left { display: flex; align-items: center; gap: 20px; }
+    .brand { font-weight: 700; font-size: 16px; color: var(--text-main); letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px; }
+    .brand span { color: var(--primary); }
+
+    .search-group { display: flex; align-items: center; gap: 12px; padding-left: 20px; border-left: 1px solid var(--border-color); }
+    .search-group label { color: var(--text-muted); font-size: 12px; font-weight: 500; }
+
+    .app-body { flex: 1; display: flex; overflow: hidden; }
+
+    /* ==================== Sidebar ==================== */
+    .sidebar {
+        width: 300px;
+        background: var(--bg-panel);
+        border-right: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sidebar-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(30, 41, 59, 0.5);
+    }
+    .sidebar-title { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; }
+
+    .sidebar-search {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .sidebar-search input {
+        width: 100%;
+        background: var(--bg-input);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+    }
+    .sidebar-search input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+    .sidebar-search input::placeholder { color: var(--text-dim); }
+
+    .session-list { flex: 1; overflow-y: auto; }
+
+    .session-item {
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+        cursor: pointer;
+        transition: background 0.15s;
+        border-left: 3px solid transparent;
+    }
+    .session-item:hover { background: rgba(255,255,255,0.03); }
+    .session-item.active {
+        background: rgba(99, 102, 241, 0.1);
+        border-left-color: var(--primary);
+    }
+    .session-id { font-family: var(--font-mono); font-size: 12px; color: var(--text-main); margin-bottom: 4px; word-break: break-all; }
+    .session-meta { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; }
+
+    /* ==================== Main Content ==================== */
+    .main-content { flex: 1; display: flex; flex-direction: column; background: var(--bg-body); position: relative; }
+
+    .toolbar {
+        height: 48px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        justify-content: space-between;
+        background: var(--bg-body);
+    }
+
+    .nav-controls { display: flex; align-items: center; gap: 12px; }
+    .nav-info { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 12px; font-weight: 500; }
+
+    /* Content Body: 左侧记录卡片 + 右侧轨迹视图 */
+    .content-body { flex: 1; display: flex; overflow: hidden; }
+
+    .record-area { flex: 1; overflow-y: auto; padding: 24px; scroll-behavior: smooth; }
+
+    /* Empty States */
+    .empty-state {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        height: 100%; color: var(--text-dim); text-align: center;
+    }
+    .empty-icon { font-size: 40px; margin-bottom: 16px; opacity: 0.5; }
+    .empty-text { font-size: 14px; color: var(--text-muted); }
+
+    /* Record Cards */
+    .record-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        margin-bottom: 16px;
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition: border-color 0.2s, box-shadow 0.2s;
+        position: relative;
+    }
+    .record-card:hover { border-color: var(--text-dim); }
+    .record-card.active { border-color: var(--primary); box-shadow: var(--shadow-glow); }
+    .record-card.error { border-left: 3px solid var(--danger); }
+
+    .record-header {
+        padding: 12px 16px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(255,255,255,0.01);
+        border-bottom: 1px solid transparent;
+    }
+    .record-header:hover { background: rgba(255,255,255,0.03); }
+    .record-card.open .record-header { border-bottom-color: var(--border-color); }
+
+    .rh-left { display: flex; align-items: center; gap: 12px; }
+    .rh-idx { font-family: var(--font-mono); color: var(--primary); font-weight: 700; font-size: 12px; min-width: 24px; }
+    .rh-model { font-weight: 600; font-size: 13px; color: var(--text-main); }
+    .rh-time { color: var(--text-dim); font-size: 12px; }
+
+    .rh-right { display: flex; align-items: center; gap: 10px; color: var(--text-dim); font-size: 12px; }
+    .rh-stats { display: flex; gap: 12px; font-family: var(--font-mono); }
+    .rh-arrow { transition: transform 0.2s; color: var(--text-dim); }
+    .record-card.open .rh-arrow { transform: rotate(90deg); }
+
+    .btn-traj {
+        background: rgba(99, 102, 241, 0.15);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        color: #818cf8;
+        padding: 2px 8px;
+        border-radius: var(--radius-sm);
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .btn-traj:hover { background: rgba(99, 102, 241, 0.25); border-color: rgba(99, 102, 241, 0.5); }
+    .btn-traj.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+    .btn-copy {
+        background: rgba(110, 231, 183, 0.12);
+        border: 1px solid rgba(110, 231, 183, 0.3);
+        color: #6ee7b7;
+        padding: 2px 8px;
+        border-radius: var(--radius-sm);
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .btn-copy:hover { background: rgba(110, 231, 183, 0.22); border-color: rgba(110, 231, 183, 0.5); }
+    .btn-copy.copied { background: #6ee7b7; color: #0f172a; border-color: #6ee7b7; }
+
+    /* JSON Tree Styles */
+    .record-body {
+        max-height: 0;
+        overflow: hidden;
+        background: #161e2e;
+    }
+    .record-card.open .record-body {
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .json-tree { padding: 16px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
+
+    .tree-node { margin-left: 20px; position: relative; }
+    .tree-row { display: flex; align-items: flex-start; }
+
+    .tree-toggle {
+        width: 14px; text-align: left; cursor: pointer; user-select: none;
+        color: var(--text-dim); display: inline-block; margin-right: 4px; line-height: 1.4;
+        flex-shrink: 0;
+    }
+    .tree-toggle:hover { color: var(--text-main); }
+
+    .tree-toggle-spacer {
+        width: 14px; display: inline-block; margin-right: 4px; flex-shrink: 0;
+    }
+
+    .tree-key { color: #93c5fd; }
+    .tree-string { color: #86efac; }
+    .tree-number { color: #fca5a5; }
+    .tree-boolean { color: #fcd34d; }
+    .tree-null { color: #94a3b8; font-style: italic; }
+    .tree-bracket { color: var(--text-dim); margin: 0 2px; }
+    .tree-ellipsis { color: var(--text-dim); font-style: italic; margin-left: 8px; }
+    .tree-array-count { color: var(--text-dim); font-size: 11px; margin-left: 4px; }
+    .tree-array-scroll {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 4px;
+    }
+    .tree-string-expandable {
+        color: #86efac;
+        cursor: pointer;
+        border-bottom: 1px dashed rgba(134, 239, 172, 0.4);
+    }
+    .tree-string-expandable:hover { border-bottom-color: #86efac; }
+
+    /* ==================== Trajectory Panel (右侧) ==================== */
+    .traj-panel {
+        width: 0;
+        min-width: 0;
+        overflow: hidden;
+        border-left: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-panel);
+        transition: width 0.3s ease, min-width 0.3s ease;
+    }
+    .traj-panel.open {
+        width: 48%;
+        min-width: 420px;
+    }
+
+    .traj-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(30, 41, 59, 0.5);
+        flex-shrink: 0;
+    }
+    .traj-header-info { display: flex; align-items: center; gap: 10px; }
+    .traj-title { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; }
+    .traj-record-label { font-family: var(--font-mono); font-size: 12px; color: #818cf8; }
+    .traj-model-label { font-size: 12px; color: var(--text-muted); }
+
+    .traj-close {
+        background: none;
+        border: none;
+        color: var(--text-dim);
+        font-size: 18px;
+        cursor: pointer;
+        padding: 0 4px;
+        line-height: 1;
+    }
+    .traj-close:hover { color: var(--text-main); }
+
+    .chat-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+    }
+
+    /* Chat Messages */
+    .chat-msg {
+        margin-bottom: 12px;
+        padding: 12px 16px;
+        border-radius: var(--radius-md);
+        position: relative;
+    }
+    .chat-msg.system {
+        background: rgba(100, 116, 139, 0.12);
+        border-left: 3px solid #64748b;
+    }
+    .chat-msg.user {
+        background: rgba(59, 130, 246, 0.1);
+        border-left: 3px solid #3b82f6;
+    }
+    .chat-msg.assistant {
+        background: rgba(16, 185, 129, 0.1);
+        border-left: 3px solid #10b981;
+    }
+    .chat-msg.tool {
+        background: rgba(245, 158, 11, 0.08);
+        border-left: 3px solid #f59e0b;
+    }
+    .chat-msg.thinking {
+        background: rgba(139, 92, 246, 0.1);
+        border-left: 3px solid #8b5cf6;
+    }
+
+    .chat-role {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .chat-role-icon { font-size: 14px; }
+    .chat-msg.system .chat-role { color: #94a3b8; }
+    .chat-msg.user .chat-role { color: #60a5fa; }
+    .chat-msg.assistant .chat-role { color: #34d399; }
+    .chat-msg.tool .chat-role { color: #fbbf24; }
+    .chat-msg.thinking .chat-role { color: #a78bfa; }
+
+    .chat-content {
+        font-size: 13px;
+        line-height: 1.7;
+        color: var(--text-main);
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .chat-content-collapsed {
+        max-height: 200px;
+        overflow: hidden;
+        position: relative;
+    }
+    .chat-content-collapsed::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: linear-gradient(transparent, var(--bg-panel));
+        pointer-events: none;
+    }
+
+    .chat-expand-btn {
+        display: block;
+        margin-top: 6px;
+        background: none;
+        border: 1px solid var(--border-color);
+        color: var(--text-muted);
+        padding: 2px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 11px;
+        cursor: pointer;
+    }
+    .chat-expand-btn:hover { border-color: var(--text-muted); color: var(--text-main); }
+
+    .tool-call-block {
+        background: rgba(0,0,0,0.2);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        padding: 8px 12px;
+        margin-top: 8px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+    }
+    .tool-call-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .tool-call-name { color: #fbbf24; font-weight: 600; }
+    .tool-call-id { color: var(--text-dim); font-size: 11px; }
+    .tool-call-args { color: var(--text-muted); white-space: pre-wrap; margin-top: 4px; max-height: 200px; overflow-y: auto; }
+
+    /* 思考内容块样式 */
+    .thinking-block {
+        background: rgba(139, 92, 246, 0.08);
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        margin-bottom: 10px;
+    }
+    .thinking-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #a78bfa;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .thinking-content {
+        color: var(--text-muted);
+        white-space: pre-wrap;
+        font-size: 12px;
+        line-height: 1.6;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .thinking-toggle {
+        display: block;
+        margin-top: 6px;
+        background: none;
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        color: #a78bfa;
+        padding: 2px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 11px;
+        cursor: pointer;
+    }
+    .thinking-toggle:hover { background: rgba(139, 92, 246, 0.15); }
+
+    /* 正常输出块样式 */
+    .output-block {
+        background: rgba(16, 185, 129, 0.05);
+        border: 1px solid rgba(16, 185, 129, 0.15);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+    }
+    .output-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #34d399;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .output-content {
+        color: var(--text-main);
+        white-space: pre-wrap;
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    .chat-separator {
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 11px;
+        margin: 16px 0;
+        position: relative;
+    }
+    .chat-separator span {
+        background: var(--bg-panel);
+        padding: 0 12px;
+        position: relative;
+        z-index: 1;
+    }
+    .chat-separator::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: var(--border-color);
+    }
+
+    .traj-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-dim);
+        text-align: center;
+    }
+    .traj-empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; }
+
+    /* Utilities */
+    .hidden { display: none !important; }
+    .spinner {
+        border: 3px solid rgba(255,255,255,0.1); border-left-color: var(--primary);
+        border-radius: 50%; width: 24px; height: 24px;
+        animation: spin 0.8s linear infinite; margin: 20px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Toast */
+    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+    .toast {
+        background: var(--bg-panel); color: var(--text-main); border: 1px solid var(--border-color);
+        padding: 10px 16px; border-radius: var(--radius-md); font-size: 13px;
+        box-shadow: var(--shadow-md); opacity: 0; transform: translateY(10px);
+        transition: all 0.3s; display: flex; align-items: center; gap: 8px;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast-success { border-left: 3px solid var(--success); }
+    .toast-error { border-left: 3px solid var(--danger); }
+    .toast-info { border-left: 3px solid var(--primary); }
+
+    /* ==================== 轨迹分析模态弹窗 ==================== */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s, visibility 0.2s;
+    }
+    .modal-overlay.show { opacity: 1; visibility: visible; }
+    .modal-content {
+        background: var(--bg-panel);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        width: 90vw;
+        max-width: 1000px;
+        height: 80vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        transform: translateY(20px);
+        transition: transform 0.2s;
+    }
+    .modal-overlay.show .modal-content { transform: translateY(0); }
+
+    .modal-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--text-main); }
+    .modal-close {
+        background: none;
+        border: none;
+        color: var(--text-dim);
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0 4px;
+        line-height: 1;
+    }
+    .modal-close:hover { color: var(--text-main); }
+
+    .modal-body {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .analysis-stats {
+        padding: 12px 20px;
+        background: rgba(0,0,0,0.2);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        gap: 24px;
+        font-size: 12px;
+        color: var(--text-muted);
+        flex-shrink: 0;
+    }
+    .stat-item { display: flex; align-items: center; gap: 6px; }
+    .stat-value { font-weight: 600; color: var(--text-main); font-variant-numeric: tabular-nums; }
+
+    .dag-scroll-container {
+        flex: 1;
+        overflow: auto;
+        position: relative;
+    }
+
+    .dag-container {
+        position: relative;
+        min-width: 100%;
+        min-height: 100%;
+        padding: 40px;
+    }
+
+.dag-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 2;
+    }
+
+    .dag-node {
+        position: absolute;
+        width: 70px;
+        height: 44px;
+        border-radius: 8px;
+        background: var(--bg-card);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-weight: 700;
+        font-size: 14px;
+        transition: transform 0.15s, box-shadow 0.15s;
+        z-index: 1;
+    }
+    .dag-node.normal {
+        border: 2px solid var(--success);
+        color: #34d399;
+    }
+    .dag-node.error {
+        border: 2px solid var(--danger);
+        background: rgba(239, 68, 68, 0.1);
+        color: #f87171;
+    }
+    .dag-node:hover {
+        transform: scale(1.15);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        z-index: 10;
+    }
+    .dag-node.selected {
+        box-shadow: 0 0 0 3px var(--primary), 0 4px 20px rgba(99,102,241,0.3);
+    }
+
+    .dag-node-label {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        text-align: center;
+    }
+    .dag-node-idx { font-size: 14px; }
+    .dag-node-status { font-size: 9px; font-weight: 400; opacity: 0.7; }
+
+    .analysis-empty {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-dim);
+    }
+    .analysis-empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+
+    /* ==================== Modal Tabs ==================== */
+    .modal-tabs {
+        display: flex;
+        gap: 0;
+        padding: 0 20px;
+        background: rgba(0,0,0,0.15);
+        border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
+    }
+    .modal-tab {
+        padding: 10px 20px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-muted);
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .modal-tab:hover {
+        color: var(--text-main);
+        background: rgba(255,255,255,0.03);
+    }
+    .modal-tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+    }
+    .tab-panel {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+    .tab-panel.active {
+        display: flex;
+    }
+
+    /* ==================== Diff Comparison ==================== */
+    .diff-selector {
+        padding: 12px 20px;
+        background: rgba(0,0,0,0.2);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+        flex-wrap: wrap;
+    }
+    .diff-selector label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+    .diff-selector select {
+        background: var(--bg-input);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        min-width: 120px;
+        max-width: 260px;
+    }
+    .diff-result {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 20px;
+    }
+    .diff-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 200px;
+        color: var(--text-dim);
+        font-size: 14px;
+    }
+    .diff-empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; }
+
+    .diff-header-row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 12px;
+        padding: 10px 16px;
+        background: rgba(0,0,0,0.15);
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+    .diff-header-left, .diff-header-right { flex: 1; }
+    .diff-header-stats { text-align: center; min-width: 140px; }
+
+    .diff-msg-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        margin-bottom: 8px;
+        overflow: hidden;
+        transition: all 0.2s;
+    }
+    .diff-msg-card.has-diff {
+        border-color: var(--warning);
+        border-left: 3px solid var(--warning);
+    }
+    .diff-msg-card.no-diff {
+        opacity: 0.7;
+    }
+    .diff-msg-card.added {
+        border-left: 3px solid var(--success);
+        background: rgba(16, 185, 129, 0.03);
+    }
+    .diff-msg-card.removed {
+        border-left: 3px solid var(--danger);
+        background: rgba(239, 68, 68, 0.03);
+    }
+
+    .diff-msg-header {
+        padding: 10px 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        user-select: none;
+    }
+    .diff-msg-header:hover {
+        background: rgba(255,255,255,0.03);
+    }
+
+    .diff-msg-role-icon { font-size: 16px; flex-shrink: 0; }
+    .diff-msg-role-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        min-width: 80px;
+    }
+    .diff-msg-role-system { color: #94a3b8; }
+    .diff-msg-role-user { color: #60a5fa; }
+    .diff-msg-role-assistant { color: #34d399; }
+    .diff-msg-role-tool { color: #fbbf24; }
+
+    .diff-msg-status {
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        flex-shrink: 0;
+    }
+    .diff-msg-status.status-same { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .diff-msg-status.status-diff { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .diff-msg-status.status-added { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+    .diff-msg-status.status-removed { background: rgba(239,68,68,0.15); color: #fca5a5; }
+
+    .diff-msg-summary {
+        flex: 1;
+        font-size: 12px;
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .diff-msg-toggle {
+        font-size: 11px;
+        color: var(--text-dim);
+        transition: transform 0.2s;
+        flex-shrink: 0;
+    }
+    .diff-msg-card.expanded .diff-msg-toggle {
+        transform: rotate(90deg);
+    }
+
+    .diff-msg-body {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+    }
+    .diff-msg-card.expanded .diff-msg-body {
+        max-height: none;
+    }
+
+    .diff-msg-body-inner {
+        padding: 0 14px 14px;
+        display: flex;
+        gap: 8px;
+    }
+
+    .diff-col {
+        flex: 1;
+        min-width: 0;
+        padding: 10px 12px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 500px;
+        overflow-y: auto;
+        font-family: var(--font-mono);
+    }
+    .diff-col-header {
+        font-size: 10px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 3px;
+        margin-bottom: 6px;
+        display: inline-block;
+    }
+    .diff-col-label-a { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .diff-col-label-b { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+    .diff-col-label-same { background: rgba(99,102,241,0.15); color: #818cf8; }
+
+    .diff-col-a { background: rgba(239, 68, 68, 0.04); border: 1px solid rgba(239, 68, 68, 0.12); }
+    .diff-col-b { background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.12); }
+    .diff-col-same { background: rgba(99, 102, 241, 0.03); border: 1px solid rgba(99, 102, 241, 0.08); }
+    .diff-col-empty { background: transparent; border: 1px dashed var(--border-color); color: var(--text-dim); font-style: italic; }
+
+    .diff-line-add { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+    .diff-line-remove { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
+    .diff-char-add { background: rgba(16, 185, 129, 0.4); border-radius: 2px; text-decoration: none; }
+    .diff-char-remove { background: rgba(239, 68, 68, 0.4); border-radius: 2px; text-decoration: none; }
+
+    /* ==================== Download Progress ==================== */
+    .download-progress {
+        font-size: 12px;
+        color: var(--text-muted);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .download-progress-bar {
+        width: 120px;
+        height: 6px;
+        background: var(--bg-input);
+        border: 1px solid var(--border-color);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+    .download-progress-fill {
+        height: 100%;
+        background: var(--primary);
+        transition: width 0.3s ease;
+        width: 0%;
+    }
+    .download-progress.done .download-progress-fill {
+        background: var(--success);
+    }
+    .download-progress.error .download-progress-fill {
+        background: var(--danger);
+    }
+
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="app-header">
+    <div class="header-left">
+        <div class="brand">
+            <span>&#9670;</span> TrajectoryViewer
+        </div>
+        <div class="search-group">
+            <label>SERVER_ADDRESS</label>
+            <div class="custom-dropdown" id="serverDropdownWrapper">
+                <input type="text" id="serverUrl" value="" placeholder="点击选择服务器地址" style="width: 220px;" onclick="toggleServerDropdown()" autocomplete="off">
+                <div class="dropdown-menu" id="serverDropdown"></div>
+            </div>
+
+            <label>MY_JOB_NAME(Run ID)</label>
+            <div class="custom-dropdown" id="runIdDropdownWrapper">
+                <input type="text" id="runId" placeholder="输入或选择 Run ID" style="width: 160px;" onclick="toggleRunIdDropdown()" oninput="filterRunIdDropdown()" autocomplete="off">
+                <div class="dropdown-menu" id="runIdDropdown"></div>
+            </div>
+
+            <button class="btn-primary" id="btnFetch" onclick="fetchSessions()">
+                <span>&#128269;</span> 查询
+            </button>
+            <button class="btn-secondary" id="btnDownload" onclick="downloadAllSessions()" title="下载所有 Session 为 JSON 文件" style="display:none">下载</button>
+            <span class="download-progress" id="downloadProgress" style="display:none"></span>
+            <button class="btn-secondary" onclick="clearAll()">重置</button>
+        </div>
+    </div>
+</header>
+
+<div class="app-body">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <span class="sidebar-title">Sessions</span>
+            <span class="badge badge-primary" id="sessionCount" style="display:none">0</span>
+        </div>
+        <div class="sidebar-search">
+            <input type="text" id="sessionSearch" placeholder="搜索 Session ID..." oninput="filterSessions()">
+        </div>
+        <div class="session-list" id="sessionList">
+            <div class="empty-state">
+                <div class="empty-icon">&#128193;</div>
+                <div class="empty-text">输入 MY_JOB_NAME(Run ID) 开始查询</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Toolbar -->
+        <div class="toolbar" id="recordNav" style="display:none">
+            <div class="nav-controls">
+                <button class="btn-secondary" id="btnPrev" onclick="navigateRecord(-1)">← 上一条</button>
+                <span class="nav-info" id="navInfo">0 / 0</span>
+                <button class="btn-secondary" id="btnNext" onclick="navigateRecord(1)">下一条 →</button>
+            </div>
+            <div class="nav-controls">
+                <button class="btn-secondary" onclick="toggleAllRecords()" title="折叠/展开所有卡片">全部折叠/展开</button>
+                <button class="btn-secondary" onclick="expandAllFields()">展开字段</button>
+                <button class="btn-secondary" onclick="collapseAllFields()">收起字段</button>
+                <button class="btn-secondary" onclick="copyAllRecords()" title="复制当前 Session 所有记录的 JSON">轨迹复制</button>
+                <button class="btn-secondary" onclick="analyzeTrajectory()" title="分析记录关联关系">轨迹分析</button>
+            </div>
+        </div>
+
+        <!-- Content Body: 记录列表 + 轨迹面板 -->
+        <div class="content-body">
+            <!-- Record List -->
+            <div class="record-area" id="recordList">
+                <div class="empty-state">
+                    <div class="empty-icon">&#128200;</div>
+                    <div class="empty-text">在左侧选择 Session 查看轨迹详情</div>
+                </div>
+            </div>
+
+            <!-- Trajectory Panel -->
+            <div class="traj-panel" id="trajPanel">
+                <div class="traj-header">
+                    <div class="traj-header-info">
+                        <span class="traj-title">轨迹视图</span>
+                        <span class="traj-record-label" id="trajRecordLabel"></span>
+                        <span class="traj-model-label" id="trajModelLabel"></span>
+                    </div>
+                    <button class="traj-close" onclick="closeTrajectory()" title="关闭轨迹视图">&times;</button>
+                </div>
+                <div class="chat-container" id="chatContainer">
+                    <div class="traj-empty">
+                        <div class="traj-empty-icon">&#128172;</div>
+                        <div class="empty-text">点击记录卡片上的「轨迹」按钮查看对话</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- 轨迹分析模态弹窗 -->
+<div class="modal-overlay" id="analysisModal" onclick="closeAnalysisModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">&#128202; 轨迹分析</div>
+            <button class="modal-close" onclick="closeAnalysisModal()">&times;</button>
+        </div>
+        <div class="modal-tabs">
+            <button class="modal-tab active" onclick="switchModalTab('analysis')">轨迹图</button>
+            <button class="modal-tab" onclick="switchModalTab('diff')">差异对比</button>
+        </div>
+        <div class="modal-body">
+            <!-- 轨迹图面板 -->
+            <div class="tab-panel active" id="analysisTabPanel">
+                <div class="analysis-stats" id="analysisStats"></div>
+                <div class="dag-scroll-container">
+                    <div class="dag-container" id="dagContainer">
+                        <svg class="dag-svg" id="dagSvg">
+                            <defs></defs>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            <!-- 差异对比面板 -->
+            <div class="tab-panel" id="diffTabPanel">
+                <div class="diff-selector">
+                    <label>轨迹A:</label>
+                    <select id="diffSelectA"></select>
+                    <label>轨迹B:</label>
+                    <select id="diffSelectB"></select>
+                    <button class="btn-primary" onclick="runDiffComparison()">对比</button>
+                    <button class="btn-secondary" onclick="expandAllDiffs()" title="展开所有">全部展开</button>
+                    <button class="btn-secondary" onclick="collapseAllDiffs()" title="折叠一切">全部折叠</button>
+                </div>
+                <div class="diff-result" id="diffResult">
+                    <div class="diff-empty">
+                        <div class="diff-empty-icon">&#128270;</div>
+                        选择两条轨迹进行对比
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==================== State & Config ====================
+let currentRecords = [];
+let currentRecordIdx = 0;
+let windowAllExpanded = true;
+let serverUrl = '';
+let trajRecordIdx = -1; // 当前轨迹视图显示的 record 索引
+let renderedBodySet = new Set(); // 已渲染 body 的 record 索引集合
+
+const MAX_STRING_LEN = 200;
+const MAX_ARRAY_RENDER = 200; // 大数组最多渲染条目数
+const CHAT_COLLAPSE_LEN = 800; // 聊天消息超过此长度折叠
+
+// 配置组颜色方案：system/tools 参数不同的请求用不同颜色区分
+const CONFIG_COLORS = [
+    '#6366f1', // 靛蓝 - 默认组
+    '#f59e0b', // 琥珀
+    '#10b981', // 翡翠
+    '#8b5cf6', // 紫罗兰
+    '#06b6d4', // 青色
+    '#f97316', // 橙色
+    '#ec4899', // 粉色
+    '#14b8a6', // 蓝绿
+];
+const EDGE_SAME_CONFIG_COLOR = '#475569';  // 同配置连线颜色 (Slate 600)
+const EDGE_DIFF_CONFIG_COLOR = '#f97316';  // 不同配置连线颜色 (橙色警告)
+
+const stringStore = new Map(); // 存储 long string / array 引用，避免 DOM 属性膨胀
+let stringStoreId = 0;
+
+// ==================== 预设服务器列表 ====================
+const PRESET_SERVERS = [
+    { url: 'http://localhost:12300', desc: '本地环境' },
+    { url: 'http://7.242.105.47:12300', desc: '测试节点' },
+    { url: 'http://7.242.104.24:12300', desc: '贵阳地域' },
+    { url: 'http://7.216.52.206:12300', desc: '乌兰地域' },
+    { url: 'http://7.150.8.143:12300', desc: '华东地域' }
+];
+
+/**
+ * 初始化服务器下拉列表
+ */
+function initServerList() {
+    renderServerDropdown();
+}
+
+/**
+ * 渲染服务器下拉框内容
+ */
+function renderServerDropdown() {
+    const dropdown = document.getElementById('serverDropdown');
+    dropdown.innerHTML = PRESET_SERVERS.map(s =>
+        `<div class="dropdown-item" onclick="selectServer('${escapeHtml(s.url)}')">
+            <div class="dropdown-item-value">${escapeHtml(s.url)}</div>
+            <div class="dropdown-item-meta">${escapeHtml(s.desc)}</div>
+        </div>`
+    ).join('');
+}
+
+/**
+ * 切换服务器下拉框显示/隐藏
+ */
+function toggleServerDropdown() {
+    const dropdown = document.getElementById('serverDropdown');
+    const runIdDropdown = document.getElementById('runIdDropdown');
+
+    // 关闭 Run ID 下拉框
+    runIdDropdown.classList.remove('show');
+
+    if (dropdown.classList.contains('show')) {
+        dropdown.classList.remove('show');
+    } else {
+        dropdown.classList.add('show');
+    }
+}
+
+/**
+ * 选择服务器选项
+ */
+function selectServer(value) {
+    const input = document.getElementById('serverUrl');
+    input.value = value;
+    document.getElementById('serverDropdown').classList.remove('show');
+    onServerChange();
+}
+
+/**
+ * 点击外部关闭下拉框
+ */
+document.addEventListener('click', (e) => {
+    // 服务器下拉框
+    const serverWrapper = document.getElementById('serverDropdownWrapper');
+    const serverDropdown = document.getElementById('serverDropdown');
+    if (serverWrapper && serverDropdown && !serverWrapper.contains(e.target)) {
+        serverDropdown.classList.remove('show');
+    }
+
+    // Run ID 下拉框
+    const runIdWrapper = document.getElementById('runIdDropdownWrapper');
+    const runIdDropdown = document.getElementById('runIdDropdown');
+    if (runIdWrapper && runIdDropdown && !runIdWrapper.contains(e.target)) {
+        runIdDropdown.classList.remove('show');
+    }
+});
+
+/**
+ * 服务器地址变化时触发
+ * 清空已加载的 Run ID 数据
+ */
+function onServerChange() {
+    // 清空已加载的 Run ID 数据，下次点击时会重新加载
+    loadedRunIdData = null;
+    document.getElementById('runIdDropdown').innerHTML = '';
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', initServerList);
+
+// ==================== Utils ====================
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    const icon = type === 'success' ? '&#10004;' : type === 'error' ? '&#10006;' : '&#8505;';
+    el.innerHTML = `<span style="font-weight:bold">${icon}</span> <span>${msg}</span>`;
+    container.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 300);
+    }, 3000);
+}
+
+function formatTime(ts) {
+    if (!ts) return '-';
+    try {
+        const d = new Date(ts);
+        if (!d || isNaN(d.getTime())) return ts;
+        const pad = (n) => n.toString().padStart(2, '0');
+        const utc8 = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+        return `${utc8.getUTCFullYear()}-${pad(utc8.getUTCMonth()+1)}-${pad(utc8.getUTCDate())} ${pad(utc8.getUTCHours())}:${pad(utc8.getUTCMinutes())}:${pad(utc8.getUTCSeconds())}`;
+    } catch { return ts; }
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function truncate(s, len) {
+    if (!s || typeof s !== 'string') return s;
+    return s.length > len ? s.substring(0, len) + '...' : s;
+}
+
+// ==================== API ====================
+async function apiGet(path) {
+    serverUrl = document.getElementById('serverUrl').value.replace(/\/+$/, '');
+    const url = serverUrl + path;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    return resp.json();
+}
+
+/**
+ * 切换 Run ID 下拉框显示/隐藏
+ */
+function toggleRunIdDropdown() {
+    const dropdown = document.getElementById('runIdDropdown');
+    const input = document.getElementById('runId');
+    const serverDropdown = document.getElementById('serverDropdown');
+
+    // 关闭服务器下拉框
+    serverDropdown.classList.remove('show');
+
+    if (dropdown.classList.contains('show')) {
+        dropdown.classList.remove('show');
+    } else {
+        // 显示下拉框并加载数据
+        dropdown.classList.add('show');
+        // 如果已有输入内容，显示过滤结果；否则显示全部
+        const keyword = input.value.trim();
+        if (loadedRunIdData) {
+            renderRunIdDropdown(loadedRunIdData, keyword);
+        } else {
+            loadRunIdOptions();
+        }
+    }
+}
+
+/**
+ * 选择 Run ID 选项
+ */
+function selectRunId(value) {
+    const input = document.getElementById('runId');
+    input.value = value;
+    document.getElementById('runIdDropdown').classList.remove('show');
+}
+
+// 存储已加载的 Run ID 数据，避免重复请求
+let loadedRunIdData = null;
+
+/**
+ * 加载 run_id 选项列表（自定义下拉框）
+ * 从 /models 接口获取所有模型，提取 run_id，按注册时间倒序排列
+ */
+async function loadRunIdOptions() {
+    const dropdown = document.getElementById('runIdDropdown');
+
+    // 如果已经加载过，直接显示（根据当前输入过滤）
+    if (loadedRunIdData) {
+        const keyword = document.getElementById('runId').value.trim();
+        renderRunIdDropdown(loadedRunIdData, keyword);
+        return;
+    }
+
+    // 显示加载状态
+    dropdown.innerHTML = '<div class="dropdown-loading"><div class="spinner"></div></div>';
+
+    try {
+        serverUrl = document.getElementById('serverUrl').value.replace(/\/+$/, '');
+        if (!serverUrl) {
+            dropdown.innerHTML = '<div class="dropdown-empty">请先选择服务器地址</div>';
+            return;
+        }
+
+        // 使用管理 API 获取模型列表（包含详细信息）
+        const data = await apiGet('/models');
+        const models = data.models || [];
+
+        // 提取 run_id 并收集最新更新时间
+        const runIdMap = new Map(); // run_id -> { count, latest_updated_at }
+        models.forEach(m => {
+            const runId = m.run_id;
+            if (runId) {
+                if (!runIdMap.has(runId)) {
+                    runIdMap.set(runId, { count: 0, latest_updated_at: null, latest_updated_at_str: null });
+                }
+                const info = runIdMap.get(runId);
+                info.count++;
+                // 取最新的 updated_at
+                if (m.updated_at) {
+                    const updateTime = new Date(m.updated_at);
+                    if (!info.latest_updated_at || updateTime > info.latest_updated_at) {
+                        info.latest_updated_at = updateTime;
+                        info.latest_updated_at_str = m.updated_at;
+                    }
+                }
+            }
+        });
+
+        // 转换为数组并按 updated_at 倒序排列（最新在前）
+        const runIds = Array.from(runIdMap.keys()).sort((a, b) => {
+            const infoA = runIdMap.get(a);
+            const infoB = runIdMap.get(b);
+            const timeA = infoA.latest_updated_at ? infoA.latest_updated_at.getTime() : 0;
+            const timeB = infoB.latest_updated_at ? infoB.latest_updated_at.getTime() : 0;
+            return timeB - timeA; // 倒序：最新在前
+        });
+
+        // 存储数据
+        loadedRunIdData = { runIds, runIdMap };
+
+        // 渲染下拉框（根据当前输入过滤）
+        const keyword = document.getElementById('runId').value.trim();
+        renderRunIdDropdown(loadedRunIdData, keyword);
+
+    } catch (e) {
+        console.error('加载 Run ID 列表失败:', e);
+        dropdown.innerHTML = '<div class="dropdown-empty">加载失败，请手动输入</div>';
+    }
+}
+
+/**
+ * 渲染 Run ID 下拉框内容
+ */
+function renderRunIdDropdown(data, filterKeyword = '') {
+    const dropdown = document.getElementById('runIdDropdown');
+    const { runIds, runIdMap } = data;
+
+    // 过滤选项
+    let filteredIds = runIds;
+    if (filterKeyword) {
+        const keyword = filterKeyword.toLowerCase();
+        filteredIds = runIds.filter(id => id.toLowerCase().includes(keyword));
+    }
+
+    if (filteredIds.length === 0) {
+        dropdown.innerHTML = '<div class="dropdown-empty">无匹配结果</div>';
+        return;
+    }
+
+    dropdown.innerHTML = filteredIds.map(id => {
+        const info = runIdMap.get(id);
+        const timeStr = info.latest_updated_at_str ? formatTime(info.latest_updated_at_str) : '无时间';
+        return `<div class="dropdown-item" onclick="selectRunId('${escapeHtml(id)}')">
+            <div class="dropdown-item-value">${escapeHtml(id)}</div>
+            <div class="dropdown-item-meta">${info.count} 模型, ${timeStr}</div>
+        </div>`;
+    }).join('');
+}
+
+/**
+ * 根据用户输入过滤 Run ID 下拉框选项
+ */
+function filterRunIdDropdown() {
+    const input = document.getElementById('runId');
+    const dropdown = document.getElementById('runIdDropdown');
+
+    // 显示下拉框
+    dropdown.classList.add('show');
+
+    // 如果数据未加载，先加载
+    if (!loadedRunIdData) {
+        loadRunIdOptions();
+        return;
+    }
+
+    // 根据输入过滤
+    const keyword = input.value.trim();
+    renderRunIdDropdown(loadedRunIdData, keyword);
+}
+
+// ==================== Logic: Sessions ====================
+async function fetchSessions() {
+    const runId = document.getElementById('runId').value.trim();
+    if (!runId) { showToast('请输入 MY_JOB_NAME(Run ID)', 'error'); return; }
+
+    const listEl = document.getElementById('sessionList');
+    listEl.innerHTML = '<div class="spinner"></div>';
+
+    try {
+        const data = await apiGet(`/trajectories?run_id=${encodeURIComponent(runId)}`);
+        const sessions = data.trajectories || [];
+
+        const badge = document.getElementById('sessionCount');
+        badge.textContent = sessions.length;
+        badge.style.display = sessions.length ? 'inline-block' : 'none';
+
+        if (sessions.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">&#128196;</div>
+                    <div class="empty-text">未找到 Session 数据</div>
+                </div>`;
+            return;
+        }
+
+        sessions.sort((a, b) => (b.last_request_time || '').localeCompare(a.last_request_time || ''));
+
+        listEl.innerHTML = sessions.map((s, i) => `
+            <div class="session-item" data-idx="${i}" data-session-id="${escapeHtml(s.session_id)}" onclick="selectSession(${i})">
+                <div class="session-id">${escapeHtml(s.session_id)}</div>
+                <div class="session-meta">
+                    <span>${s.record_count} 记录</span>
+                    <span>${formatTime(s.last_request_time)}</span>
+                </div>
+            </div>
+        `).join('');
+
+        window._sessions = sessions;
+        document.getElementById('sessionSearch').value = ''; // 清空搜索框
+        document.getElementById('btnDownload').style.display = '';
+        document.getElementById('downloadProgress').style.display = 'none';
+        showToast(`加载成功: ${sessions.length} 个 Sessions`, 'success');
+    } catch (e) {
+        listEl.innerHTML = `<div style="padding:20px;color:var(--danger);text-align:center">请求失败: ${escapeHtml(e.message)}</div>`;
+        showToast('查询失败', 'error');
+    }
+}
+
+/**
+ * 过滤 Sessions 列表
+ */
+function filterSessions() {
+    const keyword = document.getElementById('sessionSearch').value.trim().toLowerCase();
+    const items = document.querySelectorAll('.session-item');
+
+    let visibleCount = 0;
+    items.forEach(item => {
+        const sessionId = item.getAttribute('data-session-id').toLowerCase();
+        if (!keyword || sessionId.includes(keyword)) {
+            item.style.display = '';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+
+    // 更新 badge 显示匹配数量
+    const badge = document.getElementById('sessionCount');
+    if (keyword && visibleCount !== window._sessions.length) {
+        badge.textContent = `${visibleCount}/${window._sessions.length}`;
+    } else if (window._sessions) {
+        badge.textContent = window._sessions.length;
+    }
+}
+
+// ==================== Logic: Records ====================
+async function selectSession(idx) {
+    document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.session-item[data-idx="${idx}"]`).classList.add('active');
+
+    const session = window._sessions[idx];
+    const recordList = document.getElementById('recordList');
+    recordList.innerHTML = '<div class="spinner"></div>';
+    document.getElementById('recordNav').style.display = 'none';
+    closeTrajectory();
+
+    try {
+        const data = await apiGet(`/trajectories/${encodeURIComponent(session.session_id)}`);
+        let records = data.records || [];
+        records.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+
+        currentRecords = records;
+        currentRecordIdx = 0;
+        windowAllExpanded = true;
+        renderedBodySet = new Set();
+        stringStore.clear();
+        stringStoreId = 0;
+
+        if (records.length === 0) {
+            recordList.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">&#127911;</div>
+                    <div class="empty-text">该 Session 没有轨迹记录</div>
+                </div>`;
+            return;
+        }
+
+        renderRecords();
+        observeCards();
+        document.getElementById('recordNav').style.display = 'flex';
+        updateNav();
+    } catch (e) {
+        recordList.innerHTML = `<div style="padding:20px;color:var(--danger);text-align:center">加载失败: ${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function renderRecords() {
+    const list = document.getElementById('recordList');
+    list.innerHTML = currentRecords.map((r, i) => {
+        const hasError = !!r.error;
+        const errorClass = hasError ? 'error' : '';
+        const errorBadge = hasError ? '<span class="badge badge-danger">Error</span>' : '';
+        const trajActive = trajRecordIdx === i ? ' active' : '';
+
+        return `
+        <div class="record-card ${errorClass}" data-ridx="${i}" id="card-${i}">
+            <div class="record-header" onclick="toggleRecord(${i})">
+                <div class="rh-left">
+                    <span class="rh-idx">#${i + 1}</span>
+                    <span class="rh-model">${escapeHtml(r.model || 'Unknown')}</span>
+                    ${errorBadge}
+                </div>
+                <div class="rh-right">
+                    <span class="rh-time">${formatTime(r.start_time)}</span>
+                    <div class="rh-stats">
+                        <span title="Prompt Tokens">P:${r.prompt_tokens ?? '-'}</span>
+                        <span title="Completion Tokens">C:${r.completion_tokens ?? '-'}</span>
+                        <span title="Duration">${r.processing_duration_ms ? Number(r.processing_duration_ms).toFixed(2) + 'ms' : '-'}</span>
+                    </div>
+                    <button class="btn-copy" onclick="event.stopPropagation(); copyRecordJson(${i})" title="复制 JSON">复制</button>
+                    <button class="btn-traj${trajActive}" onclick="event.stopPropagation(); openTrajectory(${i})" title="轨迹视图">轨迹</button>
+                    <span class="rh-arrow">&#9654;</span>
+                </div>
+            </div>
+            <div class="record-body" id="body-${i}"></div>
+        </div>`;
+    }).join('');
+}
+
+// ==================== JSON Tree ====================
+function renderJsonTree(obj, path, depth) {
+    if (obj === null || obj === undefined) return '<span class="tree-null">null</span>';
+    if (typeof obj === 'boolean') return `<span class="tree-boolean">${obj}</span>`;
+    if (typeof obj === 'number') return `<span class="tree-number">${obj}</span>`;
+
+    if (typeof obj === 'string') {
+        if (obj.length > MAX_STRING_LEN) {
+            const fullId = '__ss_' + (stringStoreId++);
+            stringStore.set(fullId, obj);
+            const shortId = '__ss_' + (stringStoreId++);
+            stringStore.set(shortId, truncate(obj, MAX_STRING_LEN));
+            return `<span class="tree-string tree-string-expandable" data-full-id="${fullId}" data-short-id="${shortId}" data-expanded="false" onclick="toggleString(this)">"${escapeHtml(truncate(obj, MAX_STRING_LEN))}"</span>`;
+        }
+        return `<span class="tree-string">"${escapeHtml(obj)}"</span>`;
+    }
+
+    if (Array.isArray(obj)) {
+        if (obj.length === 0) return '<span class="tree-bracket">[]</span>';
+
+        const BATCH_SIZE = 50;
+        const INITIAL_RENDER = 50;
+
+        // 小数组：一次性渲染
+        if (obj.length <= INITIAL_RENDER) {
+            let childrenHtml = '';
+            obj.forEach((item, idx) => {
+                const isPrimitive = item === null || typeof item !== 'object';
+                childrenHtml += `<div class="tree-row">
+                    ${isPrimitive
+                        ? '<span class="tree-toggle-spacer"></span>'
+                        : `<span class="tree-toggle" onclick="toggleNode(this)">▶</span>`}
+                    ${renderJsonTree(item, `${path}[${idx}]`, depth + 1)}
+                </div>`;
+            });
+            return `<div>
+                <span class="tree-bracket">[</span><span class="tree-array-count">${obj.length}</span>
+                <div>${childrenHtml}</div>
+                <span class="tree-bracket">]</span>
+            </div>`;
+        }
+
+        // 大数组：初始渲染首批 + "加载更多"按钮
+        const arrId = '__arr_' + (stringStoreId++);
+        stringStore.set(arrId, obj);
+
+        let childrenHtml = '';
+        const firstBatch = obj.slice(0, INITIAL_RENDER);
+        firstBatch.forEach((item, idx) => {
+            const isPrimitive = item === null || typeof item !== 'object';
+            childrenHtml += `<div class="tree-row">
+                ${isPrimitive
+                    ? '<span class="tree-toggle-spacer"></span>'
+                    : `<span class="tree-toggle" onclick="toggleNode(this)">▶</span>`}
+                ${renderJsonTree(item, `${path}[${idx}]`, depth + 1)}
+            </div>`;
+        });
+
+        return `<div>
+            <span class="tree-bracket">[</span><span class="tree-array-count">${obj.length}</span>
+            <div class="tree-array-scroll" data-array-id="${arrId}" data-offset="${INITIAL_RENDER}" data-batch="${BATCH_SIZE}">
+                ${childrenHtml}
+                <div class="tree-load-more" style="margin-left:18px;color:var(--text-dim);font-style:italic;font-size:11px;padding:4px 0;cursor:pointer;" onclick="loadMoreArrayItems(this)">... 显示 ${INITIAL_RENDER}/${obj.length}，点击加载更多</div>
+            </div>
+            <span class="tree-bracket">]</span>
+        </div>`;
+    }
+
+    // Object
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return '<span class="tree-bracket">{}</span>';
+
+    const isOpen = false;
+
+    let entriesHtml = '';
+    keys.forEach(k => {
+        const val = obj[k];
+        const preview = getPreview(val);
+
+        // object 属性始终保留 toggle 按钮，因为 .tree-children / .tree-ellipsis 都存在，
+        // 收起后需要 toggle 来重新展开
+        entriesHtml += `
+            <div class="tree-row">
+                <span class="tree-toggle" onclick="toggleNode(this)">${isOpen ? '▼' : '▶'}</span>
+                <span class="tree-key">"${escapeHtml(k)}"</span>:
+                <span class="tree-children" style="display:${isOpen?'inline':'none'}">
+                    ${renderJsonTree(val, `${path}.${k}`, depth + 1)}
+                </span>
+                <span class="tree-ellipsis" style="display:${isOpen?'none':'inline'}">${escapeHtml(preview)}</span>,
+            </div>`;
+    });
+
+    return `<div><span class="tree-bracket">{</span><div style="margin-left:8px">${entriesHtml}</div><span class="tree-bracket">}</span></div>`;
+}
+
+function getPreview(val) {
+    if (val === null || val === undefined) return 'null';
+    if (typeof val === 'string') return truncate(val, 30);
+    if (typeof val === 'number') return val;
+    if (typeof val === 'boolean') return val;
+    if (Array.isArray(val)) return `Array(${val.length})`;
+    return `Object{${Object.keys(val).length}}`;
+}
+
+function toggleNode(el) {
+    const row = el.parentElement;
+    const children = row.querySelector('.tree-children');
+    const ellipsis = row.querySelector('.tree-ellipsis');
+    if (!children) return; // 安全检查
+
+    const isHidden = children.style.display === 'none';
+    children.style.display = isHidden ? 'inline' : 'none';
+    if (ellipsis) ellipsis.style.display = isHidden ? 'none' : 'inline';
+    el.textContent = isHidden ? '▼' : '▶';
+}
+
+function loadMoreArrayItems(el) {
+    const container = el.parentElement;
+    const arrId = container.getAttribute('data-array-id');
+    const arr = stringStore.get(arrId);
+    const offset = parseInt(container.getAttribute('data-offset'));
+    const batch = parseInt(container.getAttribute('data-batch'));
+
+    const nextBatch = arr.slice(offset, offset + batch);
+    let html = '';
+    nextBatch.forEach((item, idx) => {
+        const i = offset + idx;
+        const isPrimitive = item === null || typeof item !== 'object';
+        html += `<div class="tree-row">
+            ${isPrimitive
+                ? '<span class="tree-toggle-spacer"></span>'
+                : `<span class="tree-toggle" onclick="toggleNode(this)">▶</span>`}
+            ${renderJsonTree(item, `[${i}]`, 0)}
+        </div>`;
+    });
+
+    el.insertAdjacentHTML('beforebegin', html);
+    const newOffset = offset + batch;
+
+    if (newOffset >= arr.length) {
+        el.remove();
+    } else {
+        container.setAttribute('data-offset', newOffset);
+        el.textContent = `... 显示 ${newOffset}/${arr.length}，点击加载更多`;
+    }
+}
+
+function toggleString(el) {
+    const isExpanded = el.getAttribute('data-expanded') === 'true';
+    if (isExpanded) {
+        const shortStr = stringStore.get(el.getAttribute('data-short-id'));
+        el.innerHTML = '"' + escapeHtml(shortStr) + '"';
+        el.setAttribute('data-expanded', 'false');
+        el.title = '点击展开全文';
+    } else {
+        const fullStr = stringStore.get(el.getAttribute('data-full-id'));
+        el.innerHTML = '"' + escapeHtml(fullStr) + '"';
+        el.setAttribute('data-expanded', 'true');
+        el.title = '点击收起';
+    }
+}
+
+// ==================== Interaction Logic ====================
+function copyRecordJson(idx) {
+    const record = currentRecords[idx];
+    const jsonStr = JSON.stringify(record, null, 2);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+        const btn = document.querySelector(`#card-${idx} .btn-copy`);
+        btn.classList.add('copied');
+        btn.textContent = '已复制';
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.textContent = '复制';
+        }, 1500);
+    }).catch(() => {
+        showToast('复制失败', 'error');
+    });
+}
+function copyAllRecords() {
+    if (!currentRecords || currentRecords.length === 0) {
+        showToast('没有可复制的记录', 'error');
+        return;
+    }
+    const jsonStr = JSON.stringify(currentRecords, null, 2);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+        showToast(`已复制 ${currentRecords.length} 条记录`, 'success');
+    }).catch(() => {
+        showToast('复制失败', 'error');
+    });
+}
+
+function toggleRecord(idx) {
+    const card = document.getElementById(`card-${idx}`);
+    const isOpen = card.classList.toggle('open');
+    if (isOpen && !renderedBodySet.has(idx)) {
+        renderedBodySet.add(idx);
+        const body = document.getElementById(`body-${idx}`);
+        requestAnimationFrame(() => {
+            body.innerHTML = `<div class="json-tree">${renderJsonTree(currentRecords[idx], '', 0)}</div>`;
+        });
+    }
+}
+
+function toggleAllRecords() {
+    windowAllExpanded = !windowAllExpanded;
+    currentRecords.forEach((_, i) => {
+        const card = document.getElementById(`card-${i}`);
+        if (windowAllExpanded) {
+            card.classList.add('open');
+            if (!renderedBodySet.has(i) && isInViewport(card)) {
+                renderedBodySet.add(i);
+                const body = document.getElementById(`body-${i}`);
+                requestAnimationFrame(() => {
+                    body.innerHTML = `<div class="json-tree">${renderJsonTree(currentRecords[i], '', 0)}</div>`;
+                });
+            }
+        } else {
+            card.classList.remove('open');
+        }
+    });
+}
+
+function isInViewport(el) {
+    const rect = el.getBoundingClientRect();
+    return rect.top < window.innerHeight && rect.bottom > 0;
+}
+
+// IntersectionObserver: 滚动到可见区域时自动渲染未加载的卡片 body
+let bodyObserver = null;
+function setupBodyObserver() {
+    if (bodyObserver) return;
+    bodyObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const idx = parseInt(entry.target.dataset.ridx);
+                const card = entry.target;
+                if (card.classList.contains('open') && !renderedBodySet.has(idx)) {
+                    renderedBodySet.add(idx);
+                    const body = document.getElementById(`body-${idx}`);
+                    requestAnimationFrame(() => {
+                        body.innerHTML = `<div class="json-tree">${renderJsonTree(currentRecords[idx], '', 0)}</div>`;
+                    });
+                }
+                bodyObserver.unobserve(entry.target);
+            }
+        });
+    }, { rootMargin: '200px' });
+}
+
+function observeCards() {
+    if (!bodyObserver) setupBodyObserver();
+    document.querySelectorAll('.record-card').forEach(card => {
+        bodyObserver.observe(card);
+    });
+}
+
+function expandAllFields() {
+    document.querySelectorAll('.tree-children').forEach(el => el.style.display = 'inline');
+    document.querySelectorAll('.tree-ellipsis').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.tree-toggle').forEach(el => el.textContent = '▼');
+}
+
+function collapseAllFields() {
+    document.querySelectorAll('.tree-children').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.tree-ellipsis').forEach(el => el.style.display = 'inline');
+    document.querySelectorAll('.tree-toggle').forEach(el => el.textContent = '▶');
+}
+
+function navigateRecord(delta) {
+    const newIdx = currentRecordIdx + delta;
+    if (newIdx < 0 || newIdx >= currentRecords.length) return;
+    currentRecordIdx = newIdx;
+    updateNav();
+    scrollToRecord(newIdx);
+
+    // 如果轨迹面板已打开，同步更新
+    if (trajRecordIdx >= 0) {
+        openTrajectory(newIdx);
+    }
+}
+
+function updateNav() {
+    document.getElementById('navInfo').textContent = `${currentRecordIdx + 1} / ${currentRecords.length}`;
+    document.getElementById('btnPrev').disabled = currentRecordIdx <= 0;
+    document.getElementById('btnNext').disabled = currentRecordIdx >= currentRecords.length - 1;
+}
+
+function scrollToRecord(idx) {
+    const card = document.getElementById(`card-${idx}`);
+    if (card) {
+        document.querySelectorAll('.record-card.active').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (!card.classList.contains('open')) card.classList.add('open');
+        if (!renderedBodySet.has(idx)) {
+            renderedBodySet.add(idx);
+            const body = document.getElementById(`body-${idx}`);
+            requestAnimationFrame(() => {
+                body.innerHTML = `<div class="json-tree">${renderJsonTree(currentRecords[idx], '', 0)}</div>`;
+            });
+        }
+    }
+}
+
+function clearAll() {
+    document.getElementById('serverUrl').value = '';
+    document.getElementById('runId').value = '';
+    document.getElementById('runIdDropdown').innerHTML = '';
+    loadedRunIdData = null;
+    document.getElementById('sessionSearch').value = '';
+    document.getElementById('sessionList').innerHTML = '<div class="empty-state"><div class="empty-icon">&#128193;</div><div class="empty-text">输入 MY_JOB_NAME(Run ID) 开始查询</div></div>';
+    document.getElementById('recordList').innerHTML = '<div class="empty-state"><div class="empty-icon">&#128200;</div><div class="empty-text">在左侧选择 Session 查看轨迹详情</div></div>';
+    document.getElementById('sessionCount').style.display = 'none';
+    document.getElementById('recordNav').style.display = 'none';
+    document.getElementById('btnDownload').style.display = 'none';
+    document.getElementById('downloadProgress').style.display = 'none';
+    closeTrajectory();
+    window._sessions = [];
+    currentRecords = [];
+    renderedBodySet = new Set();
+    stringStore.clear();
+    stringStoreId = 0;
+    showToast('已重置', 'info');
+}
+
+// ==================== Download All Sessions ====================
+
+/**
+ * 下载所有 Session 为 JSON 文件
+ * 使用 File System Access API 选择本地文件夹
+ * 按 run_id 创建文件夹，逐 session 保存
+ */
+async function downloadAllSessions() {
+    const runId = document.getElementById('runId').value.trim();
+    if (!runId) {
+        showToast('请先选择 Run ID 并查询', 'error');
+        return;
+    }
+
+    const sessions = window._sessions;
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+        showToast('没有可下载的 Session', 'error');
+        return;
+    }
+
+    // 检查浏览器是否支持 File System Access API
+    if (!('showDirectoryPicker' in window)) {
+        showToast('当前浏览器不支持文件夹选择功能，请使用 Chrome / Edge', 'error');
+        return;
+    }
+
+    // 1. 让用户选择本地文件夹
+    let rootHandle;
+    try {
+        rootHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            showToast('已取消选择文件夹', 'info');
+        } else {
+            showToast('选择文件夹失败: ' + e.message, 'error');
+        }
+        return;
+    }
+
+    // 2. 创建以 run_id 命名的子文件夹（若已存在则复用）
+    let runDirHandle;
+    const safeFolderName = sanitizeFileName(runId);
+    try {
+        runDirHandle = await rootHandle.getDirectoryHandle(safeFolderName, { create: true });
+    } catch (e) {
+        showToast('创建文件夹失败: ' + e.message, 'error');
+        return;
+    }
+
+    // 3. 显示进度 UI
+    const progressEl = document.getElementById('downloadProgress');
+    const btnDownload = document.getElementById('btnDownload');
+    btnDownload.disabled = true;
+    progressEl.style.display = 'inline-flex';
+    progressEl.className = 'download-progress';
+    progressEl.innerHTML = `
+        <span class="download-progress-bar"><span class="download-progress-fill" id="downloadFill"></span></span>
+        <span id="downloadText">准备中...</span>
+    `;
+    const fillEl = document.getElementById('downloadFill');
+    const textEl = document.getElementById('downloadText');
+
+    // 4. 逐 session 下载
+    const total = sessions.length;
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < total; i++) {
+        const session = sessions[i];
+        const sid = session.session_id || `unknown_${i}`;
+        const safeName = sanitizeFileName(sid);
+        const fileName = safeName + '.json';
+
+        // 更新进度
+        const percent = Math.round(((i) / total) * 100);
+        fillEl.style.width = percent + '%';
+        textEl.textContent = `${i + 1} / ${total}`;
+
+        try {
+            const data = await apiGet(`/trajectories/${encodeURIComponent(sid)}`);
+            const jsonStr = JSON.stringify(data, null, 2);
+            const fileHandle = await runDirHandle.getFileHandle(fileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(jsonStr);
+            await writable.close();
+            successCount++;
+        } catch (e) {
+            console.error('下载 session 失败:', sid, e);
+            failCount++;
+        }
+    }
+
+    // 5. 最终进度
+    fillEl.style.width = '100%';
+    textEl.textContent = `完成: ${successCount}/${total}`;
+
+    if (failCount === 0) {
+        progressEl.classList.add('done');
+        showToast(`下载完成: ${successCount} 个 Session 已保存到 ${safeFolderName}/`, 'success');
+    } else {
+        progressEl.classList.add('error');
+        showToast(`下载完成: 成功 ${successCount}, 失败 ${failCount}`, 'error');
+    }
+
+    btnDownload.disabled = false;
+}
+
+/**
+ * 将文本转为安全的文件名（移除非法字符）
+ */
+function sanitizeFileName(name) {
+    return String(name).replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').substring(0, 200);
+}
+
+// ==================== Trajectory View (轨迹视图) ====================
+
+/**
+ * 从 record 中提取对话消息列表
+ * 按顺序返回 OpenAI 格式的 messages 数组
+ */
+function extractConversation(record) {
+    const messages = [];
+
+    // 1. 提取请求消息
+    const reqMsgs = record.messages ||
+                    (record.raw_request && record.raw_request.messages) ||
+                    [];
+    if (Array.isArray(reqMsgs)) {
+        reqMsgs.forEach(m => messages.push({...m}));
+    }
+
+    // 2. 提取响应消息
+    let responseMsg = null;
+    if (record.raw_response && record.raw_response.choices) {
+        const choice = record.raw_response.choices[0];
+        if (choice && choice.message) {
+            responseMsg = {...choice.message};
+        }
+    }
+    // 回退: 使用 response_text
+    if (!responseMsg && record.response_text) {
+        responseMsg = {role: 'assistant', content: record.response_text};
+    }
+    // 回退: 使用 text_response
+    if (!responseMsg && record.text_response) {
+        const textResp = typeof record.text_response === 'string'
+            ? record.text_response
+            : JSON.stringify(record.text_response, null, 2);
+        responseMsg = {role: 'assistant', content: textResp};
+    }
+
+    if (responseMsg) {
+        // 避免重复：如果最后一条请求消息和响应消息相同（某些代理会把完整对话放入messages）
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg &&
+            lastMsg.role === 'assistant' &&
+            lastMsg.content === responseMsg.content &&
+            !lastMsg.tool_calls && !responseMsg.tool_calls) {
+            messages[messages.length - 1] = responseMsg;
+        } else {
+            messages.push(responseMsg);
+        }
+    }
+
+    // 3. 如果有错误且没有消息，用错误信息构造一条
+    if (messages.length === 0 && record.error) {
+        messages.push({role: 'system', content: `[Error] ${record.error}`});
+    }
+
+    return messages;
+}
+
+/**
+ * 打开轨迹视图，显示指定 record 的对话
+ */
+function openTrajectory(idx) {
+    trajRecordIdx = idx;
+    const record = currentRecords[idx];
+    const panel = document.getElementById('trajPanel');
+    panel.classList.add('open');
+
+    // 更新轨迹按钮高亮
+    document.querySelectorAll('.btn-traj').forEach(b => b.classList.remove('active'));
+    const activeBtn = document.querySelector(`#card-${idx} .btn-traj`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    // 更新面板头部
+    document.getElementById('trajRecordLabel').textContent = `#${idx + 1}`;
+    document.getElementById('trajModelLabel').textContent = record.model || 'Unknown';
+
+    // 提取并渲染对话
+    const messages = extractConversation(record);
+    renderChatView(messages, record);
+}
+
+/**
+ * 关闭轨迹视图
+ */
+function closeTrajectory() {
+    trajRecordIdx = -1;
+    const panel = document.getElementById('trajPanel');
+    panel.classList.remove('open');
+    document.querySelectorAll('.btn-traj').forEach(b => b.classList.remove('active'));
+    document.getElementById('chatContainer').innerHTML = `
+        <div class="traj-empty">
+            <div class="traj-empty-icon">&#128172;</div>
+            <div class="empty-text">点击记录卡片上的「轨迹」按钮查看对话</div>
+        </div>`;
+}
+
+/**
+ * 渲染聊天视图
+ */
+function renderChatView(messages, record) {
+    const container = document.getElementById('chatContainer');
+
+    if (messages.length === 0) {
+        container.innerHTML = `
+            <div class="traj-empty">
+                <div class="traj-empty-icon">&#128172;</div>
+                <div class="empty-text">该记录没有消息数据</div>
+            </div>`;
+        return;
+    }
+
+    let html = '';
+
+    // 顶部元信息
+    html += `<div class="chat-separator"><span>${formatTime(record.start_time)} | ${record.prompt_tokens ?? '?'} prompt / ${record.completion_tokens ?? '?'} completion tokens | ${record.processing_duration_ms ? record.processing_duration_ms + 'ms' : '?'}</span></div>`;
+
+    messages.forEach((msg, i) => {
+        const role = msg.role || 'unknown';
+        const roleIcons = {system: '&#9881;', user: '&#128100;', assistant: '&#129302;', tool: '&#128295;', thinking: '&#128173;'};
+        const roleNames = {system: 'System', user: 'User', assistant: 'Assistant', tool: 'Tool', thinking: 'Thinking'};
+        const icon = roleIcons[role] || '&#9679;';
+        const name = roleNames[role] || role;
+
+        html += `<div class="chat-msg ${escapeHtml(role)}">`;
+        html += `<div class="chat-role"><span class="chat-role-icon">${icon}</span> ${escapeHtml(name)}`;
+
+        // Tool 消息显示 tool_call_id
+        if (role === 'tool' && msg.tool_call_id) {
+            html += ` <span style="color:var(--text-dim);font-weight:400;font-size:10px;">(${escapeHtml(msg.tool_call_id)})</span>`;
+        }
+        html += `</div>`;
+
+        // Assistant 消息特殊处理：区分思考、工具、正常输出
+        if (role === 'assistant') {
+            // 1. 渲染 reasoning_content (思考内容) - 默认完全折叠
+            const reasoningContent = msg.reasoning_content || msg.reasoning;
+            if (reasoningContent) {
+                const reasoningStr = formatMessageContent(reasoningContent);
+                if (reasoningStr) {
+                    html += `<div class="thinking-block">`;
+                    html += `<div class="thinking-header">&#128173; 思考过程 <span style="font-weight:400;color:var(--text-dim)">(${reasoningStr.length} 字符)</span></div>`;
+                    html += `<div class="thinking-content hidden" id="thinking-${i}">${escapeHtml(reasoningStr)}</div>`;
+                    html += `<button class="thinking-toggle" onclick="toggleThinking(${i})">展开</button>`;
+                    html += `</div>`;
+                }
+            }
+
+            // 2. 渲染 tool_calls (工具调用)
+            if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+                msg.tool_calls.forEach((tc, tcIdx) => {
+                    const fn = tc.function || {};
+                    const fnName = fn.name || 'unknown';
+                    const fnArgs = fn.arguments || '{}';
+                    let argsStr;
+                    try {
+                        argsStr = typeof fnArgs === 'string' ? JSON.stringify(JSON.parse(fnArgs), null, 2) : JSON.stringify(fnArgs, null, 2);
+                    } catch { argsStr = String(fnArgs); }
+
+                    html += `<div class="tool-call-block">`;
+                    html += `<div class="tool-call-header">`;
+                    html += `<span class="tool-call-name">&#128295; ${escapeHtml(fnName)}</span>`;
+                    if (tc.id) html += `<span class="tool-call-id">${escapeHtml(tc.id)}</span>`;
+                    html += `</div>`;
+                    html += `<div class="tool-call-args">${escapeHtml(argsStr)}</div>`;
+                    html += `</div>`;
+                });
+            }
+
+            // 3. 渲染正常输出内容 (content)
+            const contentStr = formatMessageContent(msg.content);
+            if (contentStr) {
+                html += `<div class="output-block">`;
+                html += `<div class="output-header">&#128172; 输出内容</div>`;
+                if (contentStr.length > CHAT_COLLAPSE_LEN) {
+                    const shortContent = contentStr.substring(0, CHAT_COLLAPSE_LEN);
+                    html += `<div class="output-content chat-content-collapsed" id="chat-content-${i}">${escapeHtml(shortContent)}</div>`;
+                    html += `<button class="chat-expand-btn" onclick="expandChatMsg(${i}, true)">展开全文 (${contentStr.length} 字符)</button>`;
+                    html += `<div class="output-content hidden" id="chat-content-full-${i}">${escapeHtml(contentStr)}</div>`;
+                    html += `<div class="output-content hidden" id="chat-content-short-${i}">${escapeHtml(shortContent)}</div>`;
+                } else {
+                    html += `<div class="output-content">${escapeHtml(contentStr)}</div>`;
+                }
+                html += `</div>`;
+            }
+        } else {
+            // 非 assistant 消息：常规渲染
+            const contentStr = formatMessageContent(msg.content);
+            if (contentStr) {
+                if (contentStr.length > CHAT_COLLAPSE_LEN) {
+                    const shortContent = contentStr.substring(0, CHAT_COLLAPSE_LEN);
+                    html += `<div class="chat-content chat-content-collapsed" id="chat-content-${i}">${escapeHtml(shortContent)}</div>`;
+                    html += `<button class="chat-expand-btn" onclick="expandChatMsg(${i}, true)">展开全文 (${contentStr.length} 字符)</button>`;
+                    html += `<div class="chat-content hidden" id="chat-content-full-${i}">${escapeHtml(contentStr)}</div>`;
+                    html += `<div class="chat-content hidden" id="chat-content-short-${i}">${escapeHtml(shortContent)}</div>`;
+                } else {
+                    html += `<div class="chat-content">${escapeHtml(contentStr)}</div>`;
+                }
+            }
+
+            // tool 角色的 tool_calls
+            if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                msg.tool_calls.forEach((tc, tcIdx) => {
+                    const fn = tc.function || {};
+                    const fnName = fn.name || 'unknown';
+                    const fnArgs = fn.arguments || '{}';
+                    let argsStr;
+                    try {
+                        argsStr = typeof fnArgs === 'string' ? JSON.stringify(JSON.parse(fnArgs), null, 2) : JSON.stringify(fnArgs, null, 2);
+                    } catch { argsStr = String(fnArgs); }
+
+                    html += `<div class="tool-call-block">`;
+                    html += `<div class="tool-call-header">`;
+                    html += `<span class="tool-call-name">&#128295; ${escapeHtml(fnName)}</span>`;
+                    if (tc.id) html += `<span class="tool-call-id">${escapeHtml(tc.id)}</span>`;
+                    html += `</div>`;
+                    html += `<div class="tool-call-args">${escapeHtml(argsStr)}</div>`;
+                    html += `</div>`;
+                });
+            }
+        }
+
+        html += `</div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+/**
+ * 格式化消息内容
+ * 支持纯字符串和 multimodal 数组格式
+ */
+function formatMessageContent(content) {
+    if (content === null || content === undefined) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        // multimodal content: [{type: "text", text: "..."}, {type: "image_url", ...}]
+        return content.map(part => {
+            if (typeof part === 'string') return part;
+            if (part.type === 'text') return part.text || '';
+            if (part.type === 'image_url') return `[Image: ${part.image_url?.url || 'url'}]`;
+            return JSON.stringify(part, null, 2);
+        }).join('\n');
+    }
+    return JSON.stringify(content, null, 2);
+}
+
+/**
+ * 展开/收起聊天消息
+ */
+function expandChatMsg(idx, expand) {
+    const el = document.getElementById(`chat-content-${idx}`);
+    const btn = el.nextElementSibling;
+    const fullEl = document.getElementById(`chat-content-full-${idx}`);
+    const shortEl = document.getElementById(`chat-content-short-${idx}`);
+
+    if (expand) {
+        el.classList.remove('chat-content-collapsed');
+        el.classList.add('hidden');
+        fullEl.classList.remove('hidden');
+        btn.textContent = '收起';
+        btn.onclick = () => expandChatMsg(idx, false);
+    } else {
+        fullEl.classList.add('hidden');
+        el.classList.remove('hidden');
+        el.classList.add('chat-content-collapsed');
+        el.innerHTML = shortEl.innerHTML;
+        btn.textContent = `展开全文`;
+        btn.onclick = () => expandChatMsg(idx, true);
+    }
+}
+
+/**
+ * 展开/收起思考内容
+ */
+function toggleThinking(idx) {
+    const contentEl = document.getElementById(`thinking-${idx}`);
+    const btn = contentEl.nextElementSibling;
+    const isHidden = contentEl.classList.contains('hidden');
+
+    if (isHidden) {
+        contentEl.classList.remove('hidden');
+        btn.textContent = '收起';
+    } else {
+        contentEl.classList.add('hidden');
+        btn.textContent = '展开';
+    }
+}
+
+// ==================== 轨迹分析功能 ====================
+
+/**
+ * 打开轨迹分析模态弹窗
+ */
+function analyzeTrajectory() {
+    if (currentRecords.length === 0) {
+        showToast('没有可分析的记录', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('analysisModal');
+    modal.classList.add('show');
+
+    // 构建关系图并渲染
+    const graph = buildRelationGraph(currentRecords);
+    renderDAG(graph);
+
+    // 更新统计信息
+    updateAnalysisStats(graph);
+}
+
+/**
+ * 关闭分析模态弹窗
+ */
+function closeAnalysisModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('analysisModal').classList.remove('show');
+}
+
+// ==================== Modal Tabs & Diff Comparison ====================
+
+/**
+ * 切换模态弹窗内的标签页
+ */
+function switchModalTab(tabName) {
+    // 切换标签按钮激活状态
+    document.querySelectorAll('.modal-tab').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+
+    // 切换内容面板
+    const analysisPanel = document.getElementById('analysisTabPanel');
+    const diffPanel = document.getElementById('diffTabPanel');
+
+    analysisPanel.classList.remove('active');
+    diffPanel.classList.remove('active');
+
+    if (tabName === 'analysis') {
+        analysisPanel.classList.add('active');
+    } else if (tabName === 'diff') {
+        diffPanel.classList.add('active');
+        // 切换到差异对比标签时初始化选择器
+        initDiffSelector();
+    }
+}
+
+/**
+ * 初始化差异对比选择器（在打开模态弹窗或切换到 diff 标签时调用）
+ */
+function initDiffSelector() {
+    const selA = document.getElementById('diffSelectA');
+    const selB = document.getElementById('diffSelectB');
+
+    selA.innerHTML = '';
+    selB.innerHTML = '';
+
+    currentRecords.forEach((rec, i) => {
+        const optA = document.createElement('option');
+        optA.value = i;
+        optA.textContent = `#${i + 1} ${rec.model || 'Unknown'}`;
+        selA.appendChild(optA);
+
+        const optB = document.createElement('option');
+        optB.value = i;
+        optB.textContent = `#${i + 1} ${rec.model || 'Unknown'}`;
+        selB.appendChild(optB);
+    });
+
+    // 默认选最后两条（或相同）
+    selA.value = currentRecords.length > 1 ? currentRecords.length - 2 : 0;
+    selB.value = currentRecords.length - 1;
+}
+
+/**
+ * 执行差异对比
+ */
+function runDiffComparison() {
+    const idxA = parseInt(document.getElementById('diffSelectA').value);
+    const idxB = parseInt(document.getElementById('diffSelectB').value);
+
+    if (isNaN(idxA) || isNaN(idxB)) {
+        showToast('请选择两条轨迹进行对比', 'error');
+        return;
+    }
+
+    const recA = currentRecords[idxA];
+    const recB = currentRecords[idxB];
+    const msgsA = extractConversation(recA);
+    const msgsB = extractConversation(recB);
+
+    renderDiffView(msgsA, msgsB, recA, recB, idxA, idxB);
+}
+
+/**
+ * 分层渲染差异对比视图
+ * 默认折叠：仅高亮存在差异的消息卡片
+ * 点击展开：显示详细内容并内联高亮差异
+ */
+function renderDiffView(msgsA, msgsB, recA, recB, idxA, idxB) {
+    const container = document.getElementById('diffResult');
+    let html = '';
+
+    // 头部信息
+    html += '<div class="diff-header-row">';
+    html += `<div class="diff-header-left"><strong style="color:#f87171">A: #${idxA + 1}</strong> ${escapeHtml(recA.model || '?')} | ${recA.prompt_tokens ?? '?'}P/${recA.completion_tokens ?? '?'}C</div>`;
+    html += '<div class="diff-header-stats">';
+    const diffCount = countDiffMessages(msgsA, msgsB);
+    html += `<span style="color:var(--warning);font-weight:600">${diffCount.diffCount}</span>/${Math.max(msgsA.length, msgsB.length)} 条消息存在差异`;
+    html += '</div>';
+    html += `<div class="diff-header-right"><strong style="color:#6ee7b7">B: #${idxB + 1}</strong> ${escapeHtml(recB.model || '?')} | ${recB.prompt_tokens ?? '?'}P/${recB.completion_tokens ?? '?'}C</div>`;
+    html += '</div>';
+
+    // 逐条消息对比
+    const maxLen = Math.max(msgsA.length, msgsB.length);
+    const roleIcons = { system: '&#9881;', user: '&#128100;', assistant: '&#129302;', tool: '&#128295;', thinking: '&#128173;' };
+    const roleNames = { system: 'System', user: 'User', assistant: 'Assistant', tool: 'Tool', thinking: 'Thinking' };
+
+    for (let i = 0; i < maxLen; i++) {
+        const mA = msgsA[i];
+        const mB = msgsB[i];
+        const diffResult = compareMessages(mA, mB);
+
+        // 确定卡片类型
+        let cardClass = 'diff-msg-card';
+        let statusClass = '';
+        let statusText = '';
+        if (diffResult.type === 'added') {
+            cardClass += ' added';
+            statusClass = 'status-added';
+            statusText = '&#43; 新增';
+        } else if (diffResult.type === 'removed') {
+            cardClass += ' removed';
+            statusClass = 'status-removed';
+            statusText = '&#8722; 缺失';
+        } else if (diffResult.type === 'same') {
+            cardClass += ' no-diff';
+            statusClass = 'status-same';
+            statusText = '&#10004; 相同';
+        } else {
+            cardClass += ' has-diff';
+            statusClass = 'status-diff';
+            statusText = '&#9888; 差异';
+        }
+
+        const displayMsg = mA || mB;
+        const role = displayMsg ? (displayMsg.role || 'unknown') : '';
+        const roleIcon = roleIcons[role] || '&#9679;';
+        const roleName = roleNames[role] || role;
+        const summary = diffResult.preview;
+
+        html += `<div class="${cardClass}" data-msg-idx="${i}">`;
+        html += `<div class="diff-msg-header" onclick="toggleDiffMessage(this)">`;
+        html += `<span class="diff-msg-role-icon">${roleIcon}</span>`;
+        html += `<span class="diff-msg-role-label diff-msg-role-${role}">${escapeHtml(roleName)}</span>`;
+        html += `<span class="diff-msg-status ${statusClass}">${statusText}</span>`;
+        html += `<span class="diff-msg-summary">${escapeHtml(summary)}</span>`;
+        html += '<span class="diff-msg-toggle">&#9654;</span>';
+        html += '</div>';
+
+        html += '<div class="diff-msg-body">';
+        html += '<div class="diff-msg-body-inner">';
+
+        if (diffResult.type === 'same') {
+            // 内容相同，单列显示
+            const content = formatMessageContent(mA.content);
+            html += `<div class="diff-col diff-col-same">`;
+            html += '<div class="diff-col-header diff-col-label-same">\u5185\u5bb9\u76f8\u540c</div>';
+            html += content ? escapeHtml(content.substring(0, 2000)) : '<em>（空）</em>';
+            html += '</div>';
+        } else if (diffResult.type === 'added') {
+            // 仅 B 有
+            html += '<div class="diff-col diff-col-empty">\u6d88\u606f A \u4e0d\u5b58\u5728</div>';
+            html += `<div class="diff-col diff-col-b">`;
+            html += '<div class="diff-col-header diff-col-label-b">\u6d88\u606f B \u65b0\u589e\u5185\u5bb9</div>';
+            const content = formatMessageContent(mB.content);
+            html += content ? escapeHtml(content.substring(0, 3000)) : '<em>（空）</em>';
+            html += '</div>';
+        } else if (diffResult.type === 'removed') {
+            // 仅 A 有
+            html += `<div class="diff-col diff-col-a">`;
+            html += '<div class="diff-col-header diff-col-label-a">\u6d88\u606f A \u5185\u5bb9</div>';
+            const content = formatMessageContent(mA.content);
+            html += content ? escapeHtml(content.substring(0, 3000)) : '<em>（空）</em>';
+            html += '</div>';
+            html += '<div class="diff-col diff-col-empty">\u6d88\u606f B \u4e0d\u5b58\u5728</div>';
+        } else {
+            // 内容不同，双列显示并内联高亮差异
+            const contentA = formatMessageContent(mA.content) || '';
+            const contentB = formatMessageContent(mB.content) || '';
+            const lineDiff = computeLineDiff(contentA, contentB);
+
+            html += `<div class="diff-col diff-col-a">`;
+            html += '<div class="diff-col-header diff-col-label-a">A: \u539f\u59cb\u5185\u5bb9</div>';
+            html += renderDiffLines(lineDiff, 'left');
+            html += '</div>';
+
+            html += `<div class="diff-col diff-col-b">`;
+            html += '<div class="diff-col-header diff-col-label-b">B: \u5bf9\u6bd4\u5185\u5bb9</div>';
+            html += renderDiffLines(lineDiff, 'right');
+            html += '</div>';
+        }
+
+        html += '</div>'; // diff-msg-body-inner
+        html += '</div>'; // diff-msg-body
+        html += '</div>'; // diff-msg-card
+    }
+
+    container.innerHTML = html;
+}
+
+/**
+ * 统计差异消息数量
+ */
+function countDiffMessages(msgsA, msgsB) {
+    const maxLen = Math.max(msgsA.length, msgsB.length);
+    let diffCount = 0;
+    for (let i = 0; i < maxLen; i++) {
+        const result = compareMessages(msgsA[i], msgsB[i]);
+        if (result.type !== 'same') {
+            diffCount++;
+        }
+    }
+    return { diffCount, total: maxLen };
+}
+
+/**
+ * 比较两条消息
+ * system 消息会先归一化（剥离 cch 等易变字段）再比较，避免因每次对话变化的字段产生假差异
+ * 返回 { type: 'same'|'modified'|'added'|'removed', preview: string }
+ */
+function compareMessages(mA, mB) {
+    if (!mA && !mB) {
+        return { type: 'same', preview: '' };
+    }
+    if (!mA) {
+        const preview = formatMessageContent(mB.content) || '[\u5de5\u5177\u8c03\u7528]';
+        return { type: 'added', preview: preview.substring(0, 80) };
+    }
+    if (!mB) {
+        const preview = formatMessageContent(mA.content) || '[\u5de5\u5177\u8c03\u7528]';
+        return { type: 'removed', preview: preview.substring(0, 80) };
+    }
+
+    // system 消息归一化：剥离 cch 等易变字段后再比较
+    const isSystem = (mA.role === 'system' || mB.role === 'system');
+    const rawA = formatMessageContent(mA.content) || '';
+    const rawB = formatMessageContent(mB.content) || '';
+    const contentA = isSystem ? normalizeSystemContent(rawA) : rawA;
+    const contentB = isSystem ? normalizeSystemContent(rawB) : rawB;
+
+    if (contentA === contentB) {
+        return { type: 'same', preview: contentA.substring(0, 80) || '[\u5de5\u5177\u8c03\u7528]' };
+    } else {
+        return { type: 'modified', preview: contentA.substring(0, 60) + '...' || '[\u5de5\u5177\u8c03\u7528]' };
+    }
+}
+
+/**
+ * 展开/折叠单条消息
+ */
+function toggleDiffMessage(header) {
+    const card = header.parentElement;
+    card.classList.toggle('expanded');
+}
+
+/**
+ * 展开所有差异消息
+ */
+function expandAllDiffs() {
+    document.querySelectorAll('.diff-msg-card').forEach(card => {
+        card.classList.add('expanded');
+    });
+}
+
+/**
+ * 折叠所有差异消息
+ */
+function collapseAllDiffs() {
+    document.querySelectorAll('.diff-msg-card').forEach(card => {
+        card.classList.remove('expanded');
+    });
+}
+
+/**
+ * 计算行级 diff
+ * 返回数组: [{ type: 'same'|'add'|'remove'|'modify', lineA?: string, lineB?: string }]
+ */
+function computeLineDiff(textA, textB) {
+    const linesA = textA.split('\n');
+    const linesB = textB.split('\n');
+
+    const lcs = computeLCS(linesA, linesB);
+    const result = [];
+
+    let iA = 0, iB = 0, iL = 0;
+
+    while (iA < linesA.length || iB < linesB.length) {
+        const lcsLine = iL < lcs.length ? lcs[iL] : null;
+
+        if (lcsLine !== null && iA < linesA.length && linesA[iA] === lcsLine && iB < linesB.length && linesB[iB] === lcsLine) {
+            result.push({ type: 'same', lineA: linesA[iA], lineB: linesB[iB] });
+            iA++; iB++; iL++;
+        } else {
+            const removeBlock = [];
+            while (iA < linesA.length && (lcsLine === null || linesA[iA] !== lcsLine)) {
+                removeBlock.push(linesA[iA]);
+                iA++;
+            }
+            const addBlock = [];
+            while (iB < linesB.length && (lcsLine === null || linesB[iB] !== lcsLine)) {
+                addBlock.push(linesB[iB]);
+                iB++;
+            }
+
+            const pairs = Math.min(removeBlock.length, addBlock.length);
+            for (let p = 0; p < pairs; p++) {
+                result.push({ type: 'modify', lineA: removeBlock[p], lineB: addBlock[p] });
+            }
+            for (let p = pairs; p < removeBlock.length; p++) {
+                result.push({ type: 'remove', lineA: removeBlock[p] });
+            }
+            for (let p = pairs; p < addBlock.length; p++) {
+                result.push({ type: 'add', lineB: addBlock[p] });
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * 计算 LCS（最长公共子序列）
+ */
+function computeLCS(a, b) {
+    const m = a.length, n = b.length;
+    if (m * n > 500000) {
+        return computeLCSSparse(a, b);
+    }
+
+    const dp = [];
+    for (let i = 0; i <= m; i++) {
+        dp[i] = new Uint16Array(n + 1);
+    }
+
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            dp[i][j] = a[i - 1] === b[j - 1]
+                ? dp[i - 1][j - 1] + 1
+                : Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+    }
+
+    const lcs = [];
+    let i = m, j = n;
+    while (i > 0 && j > 0) {
+        if (a[i - 1] === b[j - 1]) {
+            lcs.unshift(a[i - 1]);
+            i--; j--;
+        } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+            i--;
+        } else {
+            j--;
+        }
+    }
+    return lcs;
+}
+
+/**
+ * 稀疏 LCS（大数组优化）
+ */
+function computeLCSSparse(a, b) {
+    const indexMap = new Map();
+    b.forEach((line, j) => {
+        if (!indexMap.has(line)) indexMap.set(line, []);
+        indexMap.get(line).push(j);
+    });
+
+    const matches = [];
+    a.forEach((line, i) => {
+        const indices = indexMap.get(line);
+        if (indices) {
+            for (let k = indices.length - 1; k >= 0; k--) {
+                matches.push([i, indices[k]]);
+            }
+        }
+    });
+
+    const stacks = [];
+    const stackTops = [];
+    const prevLinks = [];
+
+    for (const [iA, iB] of matches) {
+        let pos = stackTops.findIndex(v => v >= iB);
+        if (pos === -1) pos = stackTops.length;
+
+        if (pos > 0) prevLinks.push([iA, iB, stacks[pos - 1].length - 1]);
+        else prevLinks.push([iA, iB, -1]);
+
+        if (pos === stacks.length) {
+            stacks.push([]);
+            stackTops.push(iB);
+        }
+        stacks[pos].push([iA, iB]);
+        stackTops[pos] = iB;
+    }
+
+    const result = [];
+    if (stacks.length === 0) return result;
+
+    let stackIdx = stacks.length - 1;
+    let linkIdx = stacks[stackIdx].length - 1;
+
+    while (stackIdx >= 0 && linkIdx >= 0) {
+        const [iA] = stacks[stackIdx][linkIdx];
+        result.unshift(a[iA]);
+
+        if (stackIdx > 0) {
+            for (let p = prevLinks.length - 1; p >= 0; p--) {
+                if (prevLinks[p][0] === stacks[stackIdx][linkIdx][0] && prevLinks[p][2] >= 0) {
+                    stackIdx--;
+                    linkIdx = prevLinks[p][2];
+                    break;
+                }
+            }
+        } else {
+            break;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * 渲染行级 diff 到 HTML
+ */
+function renderDiffLines(diffLines, side) {
+    let html = '';
+    diffLines.forEach(d => {
+        switch (d.type) {
+            case 'same':
+                html += escapeHtml(side === 'left' ? d.lineA : d.lineB) + '\n';
+                break;
+            case 'add':
+                if (side === 'right') {
+                    html += `<span class="diff-line-add">${escapeHtml(d.lineB)}</span>\n`;
+                }
+                break;
+            case 'remove':
+                if (side === 'left') {
+                    html += `<span class="diff-line-remove">${escapeHtml(d.lineA)}</span>\n`;
+                }
+                break;
+            case 'modify':
+                if (side === 'left') {
+                    html += renderInlineCharDiff(d.lineA, d.lineB, 'remove') + '\n';
+                } else {
+                    html += renderInlineCharDiff(d.lineB, d.lineA, 'add') + '\n';
+                }
+                break;
+        }
+    });
+    return html;
+}
+
+/**
+ * 字符级内联 diff
+ */
+function renderInlineCharDiff(current, other, type) {
+    const cssClass = type === 'add' ? 'diff-char-add' : 'diff-char-remove';
+
+    let prefixLen = 0;
+    while (prefixLen < current.length && prefixLen < other.length && current[prefixLen] === other[prefixLen]) {
+        prefixLen++;
+    }
+    let suffixLen = 0;
+    while (suffixLen < current.length - prefixLen && suffixLen < other.length - prefixLen &&
+           current[current.length - 1 - suffixLen] === other[other.length - 1 - suffixLen]) {
+        suffixLen++;
+    }
+
+    const prefix = current.substring(0, prefixLen);
+    const suffix = current.substring(current.length - suffixLen);
+    const midCurrent = current.substring(prefixLen, current.length - suffixLen);
+    const midOther = other.substring(prefixLen, other.length - suffixLen);
+
+    const charLCS = computeLCS(midCurrent.split(''), midOther.split(''));
+    const lcsSet = new Set();
+    let lcsIdx = 0;
+    for (let ci = 0; ci < midCurrent.length && lcsIdx < charLCS.length; ci++) {
+        if (midCurrent[ci] === charLCS[lcsIdx]) {
+            lcsSet.add(ci);
+            lcsIdx++;
+        }
+    }
+
+    let midHtml = '';
+    for (let ci = 0; ci < midCurrent.length; ci++) {
+        const ch = escapeHtml(midCurrent[ci]);
+        if (lcsSet.has(ci)) {
+            midHtml += ch;
+        } else {
+            midHtml += `<span class="${cssClass}">${ch}</span>`;
+        }
+    }
+
+    return escapeHtml(prefix) + midHtml + escapeHtml(suffix);
+}
+
+/**
+ * 获取 record 的请求消息列表（兼容多种数据格式）
+ */
+function getRecordMessages(record) {
+    return record.messages || (record.raw_request && record.raw_request.messages) || [];
+}
+
+/**
+ * 归一化 system 消息内容：剥离每次对话都会变化的易变字段，
+ * 使配置指纹、消息对比不受其干扰。
+ *
+ * 目前处理：
+ * - x-anthropic-billing-header 中的 cch=<hex> 值（每次对话随机）
+ *
+ * 后续如有新的易变字段，只需在此函数中追加替换规则。
+ */
+function normalizeSystemContent(content) {
+    if (!content || typeof content !== 'string') return content;
+    // 将 cch=<任意非分号字符> 替换为固定占位符，忽略每次对话的随机值
+    return content.replace(/cch=[^;\s]*/g, 'cch=<normalized>');
+}
+
+/**
+ * 计算请求配置指纹（system 消息 + tools 参数）
+ * 用于区分不同配置的推理请求
+ */
+function computeConfigFingerprint(record) {
+    const msgs = getRecordMessages(record);
+    // 提取 system 消息内容并归一化（剥离易变字段）
+    const systemMsg = msgs.find(m => m.role === 'system');
+    const rawSystemContent = systemMsg
+        ? (typeof systemMsg.content === 'string' ? systemMsg.content : JSON.stringify(systemMsg.content))
+        : '';
+    const systemContent = normalizeSystemContent(rawSystemContent);
+
+    // 提取 tools 参数（取工具名称列表排序后拼接）
+    const tools = record.tools
+        || (record.raw_request && record.raw_request.tools)
+        || [];
+    const toolsNames = Array.isArray(tools)
+        ? tools.map(t => t.function && t.function.name ? t.function.name : (t.name || '')).sort().join(',')
+        : '';
+
+    return `sys:${systemContent}|tools:${toolsNames}`;
+}
+
+/**
+ * 构建记录关系图（仅连前后轮对话，配置组颜色区分）
+ * 返回: { nodes: [], edges: [], roots: [], configGroupCount, configFingerprints }
+ */
+function buildRelationGraph(records) {
+    const nodes = records.map((r, i) => ({
+        idx: i,
+        hasError: !!r.error,
+        children: [],
+        parents: [],
+        configGroup: -1 // 待分配
+    }));
+
+    const edges = [];
+
+    // 计算每个 record 的配置指纹并分配配置组（相同指纹 = 同一组）
+    const configFingerprints = records.map(r => computeConfigFingerprint(r));
+    const configGroupMap = new Map();
+    let groupIndex = 0;
+    configFingerprints.forEach((fp, i) => {
+        if (!configGroupMap.has(fp)) {
+            configGroupMap.set(fp, groupIndex++);
+        }
+        nodes[i].configGroup = configGroupMap.get(fp);
+    });
+
+    // 仅限前后轮对话连线：每个 record 只连接其直接前驱
+    // 直接前驱 = 消息前缀最长且完全匹配的 record（排除跨轮连线）
+    for (let j = 0; j < records.length; j++) {
+        let bestParent = -1;
+        let bestParentLen = 0;
+
+        const childMsgs = getRecordMessages(records[j]);
+        if (childMsgs.length === 0) continue;
+
+        for (let i = 0; i < records.length; i++) {
+            if (i === j) continue;
+
+            const parentMsgs = getRecordMessages(records[i]);
+            if (parentMsgs.length === 0) continue;
+            if (childMsgs.length <= parentMsgs.length) continue;
+
+            // 检查前 parentMsgs.length 条消息是否一致
+            let match = true;
+            for (let k = 0; k < parentMsgs.length; k++) {
+                if (!messagesEqual(childMsgs[k], parentMsgs[k])) {
+                    match = false;
+                    break;
+                }
+            }
+
+            // 只取最长匹配前缀作为直接前驱（保证只有前后轮连线，无跨轮连线）
+            if (match && parentMsgs.length > bestParentLen) {
+                bestParent = i;
+                bestParentLen = parentMsgs.length;
+            }
+        }
+
+        if (bestParent >= 0) {
+            nodes[bestParent].children.push(j);
+            nodes[j].parents.push(bestParent);
+            edges.push({
+                from: bestParent,
+                to: j,
+                configChanged: nodes[bestParent].configGroup !== nodes[j].configGroup,
+                fromGroup: nodes[bestParent].configGroup,
+                toGroup: nodes[j].configGroup
+            });
+        }
+    }
+
+    // 找出根节点（没有父节点的节点）
+    const roots = nodes.filter(n => n.parents.length === 0).map(n => n.idx);
+
+    return { nodes, edges, roots, configGroupCount: groupIndex, configFingerprints };
+}
+
+/**
+ * 比较两条消息是否相等（用于前后轮对话检测）
+ * system 消息会先归一化（剥离 cch 等易变字段）再比较
+ */
+function messagesEqual(a, b) {
+    if (a.role !== b.role) return false;
+
+    let contentA = typeof a.content === 'string' ? a.content : JSON.stringify(a.content || '');
+    let contentB = typeof b.content === 'string' ? b.content : JSON.stringify(b.content || '');
+
+    // system 消息包含 billing header 中的易变字段，需归一化后再比较
+    if (a.role === 'system') {
+        contentA = normalizeSystemContent(contentA);
+        contentB = normalizeSystemContent(contentB);
+    }
+
+    if (contentA !== contentB) return false;
+
+    // 比较 tool_calls（如果存在）
+    const tcA = a.tool_calls || [];
+    const tcB = b.tool_calls || [];
+    if (tcA.length !== tcB.length) return false;
+
+    return true;
+}
+
+/**
+ * 渲染 DAG 图（配置组颜色区分 + 前后轮连线）
+ */
+function renderDAG(graph) {
+    const container = document.getElementById('dagContainer');
+    const svg = document.getElementById('dagSvg');
+
+    // 清空现有内容
+    container.querySelectorAll('.dag-node').forEach(el => el.remove());
+    container.querySelectorAll('.dag-legend').forEach(el => el.remove());
+    svg.querySelectorAll('path').forEach(el => el.remove());
+    // 清空旧 marker，准备动态创建
+    const defs = svg.querySelector('defs');
+    defs.innerHTML = '';
+
+    if (graph.nodes.length === 0) {
+        container.innerHTML = `<div class="analysis-empty">
+            <div class="analysis-empty-icon">&#128202;</div>
+            <div>没有数据可分析</div>
+        </div>`;
+        return;
+    }
+
+    // 为每种连线颜色动态创建箭头 marker
+    const markerColors = [EDGE_SAME_CONFIG_COLOR, EDGE_DIFF_CONFIG_COLOR];
+    // 不同配置组间连线也用各组的颜色 marker（用于节点边框高亮）
+    for (let g = 0; g < graph.configGroupCount; g++) {
+        markerColors.push(CONFIG_COLORS[g] || CONFIG_COLORS[0]);
+    }
+    markerColors.forEach(color => {
+        const markerId = 'arrow-' + color.replace('#', '');
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+        marker.setAttribute('id', markerId);
+        marker.setAttribute('markerWidth', '6');
+        marker.setAttribute('markerHeight', '4');
+        marker.setAttribute('refX', '5');
+        marker.setAttribute('refY', '2');
+        marker.setAttribute('orient', 'auto');
+        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        polygon.setAttribute('points', '0 0, 6 2, 0 4');
+        polygon.setAttribute('fill', color);
+        marker.appendChild(polygon);
+        defs.appendChild(marker);
+    });
+
+    // 计算布局：使用简单的层级布局
+    const layout = computeLayout(graph);
+
+    const nodeWidth = 70;
+    const nodeHeight = 44;
+    const horizontalGap = 30;
+    const verticalGap = 50;
+
+    layout.positions.forEach((pos, idx) => {
+        const node = graph.nodes[idx];
+        const x = pos.level * (nodeWidth + horizontalGap) + 40;
+        const y = pos.row * (nodeHeight + verticalGap) + 40;
+
+        const configColor = CONFIG_COLORS[node.configGroup] || CONFIG_COLORS[0];
+
+        // 构建节点 tooltip：配置组信息
+        const fp = graph.configFingerprints[idx];
+        const sysPart = (fp.split('|')[0] || '').replace('sys:', '');
+        const toolsPart = (fp.split('|')[1] || '').replace('tools:', '');
+        const tooltip = `配置组 ${node.configGroup + 1}\nSystem: ${truncate(sysPart, 80) || '(无)'}\nTools: ${toolsPart || '(无)'}`;
+
+        const nodeEl = document.createElement('div');
+        nodeEl.className = `dag-node ${node.hasError ? 'error' : 'normal'}`;
+        nodeEl.style.left = `${x}px`;
+        nodeEl.style.top = `${y}px`;
+        nodeEl.style.borderColor = configColor;
+        nodeEl.style.color = configColor;
+        nodeEl.title = tooltip;
+        nodeEl.innerHTML = `<div class="dag-node-label">
+            <span class="dag-node-idx">#${idx + 1}</span>
+            <span class="dag-node-status" style="color:${configColor}">${node.hasError ? 'Error' : 'OK'}</span>
+        </div>`;
+        nodeEl.onclick = () => jumpToRecord(idx);
+        nodeEl.id = `dag-node-${idx}`;
+        container.appendChild(nodeEl);
+
+        // 存储位置信息用于绘制连线（右→左水平连接，从根本上杜绝穿越节点）
+        node._rightX = x + nodeWidth;           // 右侧（出边起点）
+        node._leftX = x;                        // 左侧（入边终点）
+        node._centerY = y + nodeHeight / 2;     // 垂直中心
+    });
+
+    // 渲染连线（前后轮对话关系，右→左水平连接）
+    // 连线从父节点右侧到子节点左侧，仅经过层间间隙（无节点的空白区域），根本杜绝穿越
+    graph.edges.forEach(edge => {
+        const fromNode = graph.nodes[edge.from];
+        const toNode = graph.nodes[edge.to];
+
+        if (fromNode._rightX === undefined) return;
+
+        const fromX = fromNode._rightX;     // 父节点右侧
+        const fromY = fromNode._centerY;    // 父节点垂直中心
+        const toX = toNode._leftX;          // 子节点左侧
+        const toY = toNode._centerY;        // 子节点垂直中心
+
+        // 水平 S 曲线：控制在层间间隙中过渡，不会穿过任何节点
+        const midX = (fromX + toX) / 2;
+        const pathData = `M${fromX},${fromY} C${midX},${fromY} ${midX},${toY} ${toX},${toY}`;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pathData);
+
+        if (edge.configChanged) {
+            // 配置变更连线：橙色虚线（醒目提示 system 或 tools 参数不一致）
+            path.setAttribute('stroke', EDGE_DIFF_CONFIG_COLOR);
+            path.setAttribute('stroke-width', '2.5');
+            path.setAttribute('stroke-dasharray', '6,3');
+            path.setAttribute('fill', 'none');
+            path.setAttribute('marker-end', `url(#arrow-${EDGE_DIFF_CONFIG_COLOR.replace('#', '')})`);
+        } else {
+            // 同配置连线：实线（前后轮对话配置一致）
+            path.setAttribute('stroke', EDGE_SAME_CONFIG_COLOR);
+            path.setAttribute('stroke-width', '2');
+            path.setAttribute('fill', 'none');
+            path.setAttribute('marker-end', `url(#arrow-${EDGE_SAME_CONFIG_COLOR.replace('#', '')})`);
+        }
+
+        svg.appendChild(path);
+    });
+
+    // 渲染颜色图例（右上角）
+    const legendEl = document.createElement('div');
+    legendEl.className = 'dag-legend';
+    legendEl.style.cssText = 'position:absolute;bottom:10px;right:10px;background:rgba(30,41,59,0.92);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;font-size:11px;z-index:5;max-width:220px;';
+
+    let legendHtml = '<div style="font-weight:700;color:var(--text-muted);margin-bottom:8px;letter-spacing:0.5px;">配置组颜色</div>';
+
+    // 配置组颜色说明
+    for (let g = 0; g < graph.configGroupCount; g++) {
+        const color = CONFIG_COLORS[g] || CONFIG_COLORS[0];
+        const count = graph.nodes.filter(n => n.configGroup === g).length;
+        legendHtml += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="width:12px;height:12px;border-radius:3px;background:${color};display:inline-block;"></span>
+            <span style="color:var(--text-main);">配置组 ${g + 1} (${count} 条)</span>
+        </div>`;
+    }
+
+    // 连线类型说明
+    legendHtml += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border-color);">';
+    legendHtml += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <span style="width:24px;height:2px;background:${EDGE_SAME_CONFIG_COLOR};display:inline-block;"></span>
+        <span style="color:var(--text-main);">同配置前后轮</span>
+    </div>`;
+    legendHtml += `<div style="display:flex;align-items:center;gap:6px;">
+        <span style="width:24px;height:0;border-top:2.5px dashed ${EDGE_DIFF_CONFIG_COLOR};display:inline-block;"></span>
+        <span style="color:var(--text-main);">配置变更(Sys/Tools)</span>
+    </div>`;
+    legendHtml += '</div>';
+
+    legendEl.innerHTML = legendHtml;
+    container.appendChild(legendEl);
+
+    // 更新容器大小
+    const maxX = Math.max(...layout.positions.map(p => p.level)) * (nodeWidth + horizontalGap) + 200;
+    const maxY = Math.max(...layout.positions.map(p => p.row)) * (nodeHeight + verticalGap) + 150;
+    container.style.width = `${Math.max(maxX, 400)}px`;
+    container.style.height = `${Math.max(maxY, 300)}px`;
+}
+
+/**
+ * 计算布局位置（树形布局：子节点优先与父同行，多子节点分行，总行数=叶子数）
+ * 返回: { positions: [{ level, row }] }
+ */
+function computeLayout(graph) {
+    const positions = graph.nodes.map(() => ({ level: 0, row: -1 }));
+
+    // BFS 分配层级（横向位置）
+    const visited = new Set();
+    const queue = [...graph.roots];
+
+    while (queue.length > 0) {
+        const idx = queue.shift();
+        if (visited.has(idx)) continue;
+        visited.add(idx);
+
+        const node = graph.nodes[idx];
+        const currentLevel = positions[idx].level;
+
+        node.children.forEach(childIdx => {
+            if (!visited.has(childIdx)) {
+                positions[childIdx].level = Math.max(positions[childIdx].level, currentLevel + 1);
+                queue.push(childIdx);
+            }
+        });
+    }
+
+    // 递归分配行号（纵向位置）：树形布局
+    // 单子节点与父同行，多子节点各占一行
+    let nextRow = 0;
+
+    for (const rootIdx of graph.roots) {
+        nextRow = assignSubtreeRow(rootIdx, nextRow, graph, positions);
+    }
+
+    // 处理无法从根到达的节点（安全兜底）
+    graph.nodes.forEach((node, idx) => {
+        if (positions[idx].row === -1) {
+            positions[idx].row = nextRow++;
+        }
+    });
+
+    return { positions, totalRows: nextRow };
+}
+
+/**
+ * 递归分配子树的行号
+ * - 叶子节点占一行
+ * - 单子节点：父与子同行（链式紧凑）
+ * - 多子节点：每个子树独立占连续行，父在首行
+ * 返回: 下一个可用行号
+ */
+function assignSubtreeRow(nodeIdx, startRow, graph, positions) {
+    const node = graph.nodes[nodeIdx];
+    const children = node.children;
+
+    if (children.length === 0) {
+        // 叶子节点：占一行
+        positions[nodeIdx].row = startRow;
+        return startRow + 1;
+    }
+
+    if (children.length === 1) {
+        // 单子节点：父与子同行（紧凑链式布局）
+        const endRow = assignSubtreeRow(children[0], startRow, graph, positions);
+        positions[nodeIdx].row = startRow;
+        return endRow;
+    }
+
+    // 多子节点：每个子树占连续行段，父节点在首行
+    let currentRow = startRow;
+    for (const childIdx of children) {
+        currentRow = assignSubtreeRow(childIdx, currentRow, graph, positions);
+    }
+    positions[nodeIdx].row = startRow;
+    return currentRow;
+}
+
+/**
+ * 更新统计信息（含配置组与配置变更统计）
+ */
+function updateAnalysisStats(graph) {
+    const statsEl = document.getElementById('analysisStats');
+    const errorCount = graph.nodes.filter(n => n.hasError).length;
+    const rootCount = graph.roots.length;
+    const edgeCount = graph.edges.length;
+    const configChangedEdges = graph.edges.filter(e => e.configChanged).length;
+
+    statsEl.innerHTML = `
+        <div class="stat-item"><span>总记录:</span><span class="stat-value">${graph.nodes.length}</span></div>
+        <div class="stat-item"><span>对话树:</span><span class="stat-value">${rootCount}</span></div>
+        <div class="stat-item"><span>前后轮:</span><span class="stat-value">${edgeCount}</span></div>
+        <div class="stat-item"><span>配置组:</span><span class="stat-value">${graph.configGroupCount}</span></div>
+        <div class="stat-item"><span>配置变更:</span><span class="stat-value" style="color:${configChangedEdges > 0 ? EDGE_DIFF_CONFIG_COLOR : 'var(--success)'}">${configChangedEdges}</span></div>
+        <div class="stat-item"><span>异常:</span><span class="stat-value" style="color: ${errorCount > 0 ? '#f87171' : 'var(--success)'}">${errorCount}</span></div>
+    `;
+}
+
+/**
+ * 跳转到指定记录
+ */
+function jumpToRecord(idx) {
+    closeAnalysisModal();
+    currentRecordIdx = idx;
+    updateNav();
+    scrollToRecord(idx);
+
+    // 高亮 DAG 节点
+    document.querySelectorAll('.dag-node').forEach(n => n.classList.remove('selected'));
+    const nodeEl = document.getElementById(`dag-node-${idx}`);
+    if (nodeEl) nodeEl.classList.add('selected');
+}
+
+// Keyboard Shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+
+    if (e.key === 'Escape') {
+        closeAnalysisModal();
+        closeTrajectory();
+    }
+
+    if (currentRecords.length === 0) return;
+
+    if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); navigateRecord(-1); }
+    if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navigateRecord(1); }
+});
+</script>
+</body>
+</html>
