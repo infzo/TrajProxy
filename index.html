@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrajProxy Tools</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f8fafc; color: #0f172a; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .container { max-width: 480px; width: 100%; padding: 40px 24px; }
+  h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .sub { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+  .card {
+    display: block; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 20px 24px; margin-bottom: 12px; text-decoration: none;
+    transition: box-shadow .15s, border-color .15s;
+  }
+  .card:hover { border-color: #6366f1; box-shadow: 0 4px 12px rgba(99,102,241,0.12); }
+  .card h2 { font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 4px; }
+  .card p { font-size: 13px; color: #64748b; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>TrajProxy Tools</h1>
+  <p class="sub">开发调试工具集</p>
+
+  <a class="card" href="tokenizer_tool.html">
+    <h2>Tokenizer Tool</h2>
+    <p>Chat Messages ↔ Prompt ↔ Token IDs 三向转换，支持 ModelScope 在线加载 tokenizer</p>
+  </a>
+
+  <a class="card" href="replay_trajectory_viewer.html">
+    <h2>Replay Trajectory Viewer</h2>
+    <p>可视化回放 trajectory 记录，查看推理过程的 token 级别细节</p>
+  </a>
+</div>
+</body>
+</html>
