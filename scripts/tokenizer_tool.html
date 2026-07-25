@@ -555,8 +555,22 @@ function parseTokenizerJson(json) {
   state.mergeList = [];
   if (model.merges && Array.isArray(model.merges)) {
     model.merges.forEach((merge, idx) => {
-      const parts = merge.split(' ');
-      if (parts.length === 2) { state.merges.set(merge, idx); state.mergeList.push(parts); }
+      // ★ 兼容两种 BPE merge 格式：
+      //   字符串 "Ġ H"（GPT-2 / Qwen 等）  数组 ["Ġ", "H"]（GLM 等）
+      let parts, key;
+      if (typeof merge === 'string') {
+        parts = merge.split(' ');
+        key = merge;
+      } else if (Array.isArray(merge) && merge.length === 2) {
+        parts = merge;
+        key = merge[0] + ' ' + merge[1];
+      } else {
+        return; // 跳过无法识别的格式
+      }
+      if (parts.length === 2) {
+        state.merges.set(key, idx);
+        state.mergeList.push(parts);
+      }
     });
   }
   state.addedTokens = new Map();
