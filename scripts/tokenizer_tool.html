@@ -738,6 +738,23 @@ function runMessagesToPrompt() {
     setPrompt(renderChatTemplate(messages, true));
     runPromptToTokens();
   } catch (e) {
+    // ★ 修复：Nunjucks 无法渲染官方模板时（如 Qwen3.5 使用了 namespace、[::-1] 等 Jinja2 专有语法）
+    // 自动回退到内建简版 ChatML 模板
+    const fb = buildFallbackChatTemplate(state.modelPath);
+    if (fb) {
+      console.warn('Nunjucks 渲染失败，回退到内置简化模板:', e.message);
+      state.chatTemplate = fb;
+      try {
+        setPrompt(renderChatTemplate(messages, true));
+        runPromptToTokens();
+        showToast('Chat template 已自动切换为内置简化版（官方模板含 Nunjucks 不支持的高级语法）', 'success');
+        return;
+      } catch (e2) {
+        setPrompt('[渲染错误] ' + e2.message);
+        showToast('Chat Template 渲染失败: ' + e2.message, 'error');
+        return;
+      }
+    }
     setPrompt('[渲染错误] ' + e.message);
     showToast('Chat Template 渲染失败: ' + e.message, 'error');
   }
