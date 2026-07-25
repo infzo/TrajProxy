@@ -651,6 +651,18 @@ async function loadTokenizer() {
     state.modelPath = modelPath;
     const vocabSize = Object.keys(state.vocab).length.toLocaleString();
 
+    // ★ 无 chat_template 时根据 bos/eos token 自动构造通用模板
+    if (!state.chatTemplate && state.bosToken && state.eosToken) {
+      state.chatTemplate = [
+        "{%- for message in messages %}",
+        "{{- bos_token + message['role'] + '\n' + message['content'] + eos_token + '\n' }}",
+        "{%- endfor %}",
+        "{%- if add_generation_prompt %}",
+        "{{- bos_token + 'assistant\n' }}",
+        "{%- endif %}",
+      ].join('');
+    }
+
     const tmplTag = state.chatTemplate
       ? (templateFromJinja ? ' · 模板来自 chat_template.jinja' : '')
       : ' ⚠ 无 chat_template';
