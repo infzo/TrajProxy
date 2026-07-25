@@ -272,7 +272,7 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all .1
 <div class="drop-overlay" id="dropOverlay"><span>释放文件以加载 Tokenizer</span></div>
 <div id="toastContainer"></div>
 
-<script src="https://unpkg.com/nunjucks@3.2.4/browser/nunjucks.min.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
 <script>
 // ============================================================
 // 全局状态
@@ -469,68 +469,45 @@ function tokenizeDecode(tokenIds) {
 // ============================================================
 // 内置 Chat Template Fallback（已知模型族）
 // ============================================================
-function buildFallbackChatTemplate(modelId) {
-  const lower = modelId.toLowerCase();
-  if (lower.includes('qwen') || lower.includes('chatml')) {
-    return [
-      "{%- for message in messages %}",
-      "{{- '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n' }}",
-      "{%- endfor %}",
-      "{%- if add_generation_prompt %}",
-      "{{- '<|im_start|>assistant\n' }}",
-      "{%- endif %}",
-    ].join('');
-  }
-  if (lower.includes('deepseek')) {
-    return [
-      "{%- for message in messages %}",
-      "{{- '<｜begin▁of▁sentence｜>' + message['role'] + '\n' + message['content'] + '<｜end▁of▁sentence｜>' + '\n' }}",
-      "{%- endfor %}",
-      "{%- if add_generation_prompt %}",
-      "{{- '<｜begin▁of▁sentence｜>assistant\n' }}",
-      "{%- endif %}",
-    ].join('');
-  }
-  if (lower.includes('llama') || lower.includes('meta-llama')) {
-    return [
-      "{%- if messages[0]['role'] == 'system' %}",
-      "{{- '<|start_header_id|>system<|end_header_id|>\n\n' + messages[0]['content'] + '<|eot_id|>' }}",
-      "{%- set loop_messages = messages[1:] %}",
-      "{%- else %}",
-      "{%- set loop_messages = messages %}",
-      "{%- endif %}",
-      "{%- for message in loop_messages %}",
-      "{%- if message['role'] == 'user' %}",
-      "{{- '<|start_header_id|>user<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}",
-      "{%- elif message['role'] == 'assistant' %}",
-      "{{- '<|start_header_id|>assistant<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}",
-      "{%- endif %}",
-      "{%- endfor %}",
-      "{%- if add_generation_prompt %}",
-      "{{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}",
-      "{%- endif %}",
-    ].join('');
-  }
-  return null;
+// ============================================================
+// Chat Template 渲染（Pyodide → Jinja2）
+// ============================================================
+async function initPyodide() {
+  if (state._pyodideReady) return;
+  setStatus('', '正在加载 Jinja2 引擎 (Pyodide + jinja2, 首次约需 5-10s)...');
+  const pyodide = await loadPyodide({
+    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/'
+  });
+  await pyodide.loadPackage(['jinja2', 'markupsafe']);
+  state._pyodide = pyodide;
+  state._pyodideReady = true;
+  console.log('Pyodide + Jinja2 引擎就绪');
 }
 
-// ============================================================
-// Chat Template 渲染（Nunjucks）
-// ============================================================
-function renderChatTemplate(messages, addGenerationPrompt) {
+async function renderChatTemplate(messages, addGenerationPrompt) {
   if (!state.chatTemplate) throw new Error('Chat template 未加载。请先加载模型配置文件。');
   if (typeof state.chatTemplate !== 'string') throw new Error('Chat template 格式异常，不是字符串。类型: ' + typeof state.chatTemplate);
-  if (typeof nunjucks === 'undefined') throw new Error('Nunjucks 库未加载。');
-  if (!state._nunjucksReady) {
-    nunjucks.configure({ autoescape: false, throwOnUndefined: false });
-    state._nunjucksReady = true;
-  }
-  return nunjucks.renderString(state.chatTemplate, {
+
+  await initPyodide();
+  setStatus('', '正在渲染 Chat Template...');
+
+  const pyodide = state._pyodide;
+  pyodide.globals.set('_tmpl_str', state.chatTemplate);
+  pyodide.globals.set('_context', pyodide.toPy({
     messages: messages,
     add_generation_prompt: addGenerationPrompt,
     bos_token: state.bosToken || '',
     eos_token: state.eosToken || '',
-  });
+  }));
+
+  const result = await pyodide.runPythonAsync(`
+import jinja2
+
+tmpl = jinja2.Template(_tmpl_str)
+result = tmpl.render(**_context)
+result
+  `);
+  return result;
 }
 
 // ============================================================
@@ -664,17 +641,12 @@ async function loadTokenizer() {
     state.modelPath = modelPath;
     const vocabSize = Object.keys(state.vocab).length.toLocaleString();
 
-    if (!state.chatTemplate) {
-      const fb = buildFallbackChatTemplate(modelPath);
-      if (fb) { state.chatTemplate = fb; showToast('chat_template 通过内置模板自动补充', 'success'); }
-    }
-
     const tmplTag = state.chatTemplate
       ? (templateFromJinja ? ' · 模板来自 chat_template.jinja' : '')
       : ' ⚠ 无 chat_template';
     setStatus('ok', '已加载: ' + modelPath + ' · vocab=' + vocabSize + tmplTag);
 
-    runMessagesToPrompt();
+    await runMessagesToPrompt();
     const extra = configError ? '（config 加载失败，chat_template 可能缺失）' : '';
     showToast('Tokenizer 加载成功 (' + vocabSize + ' tokens) ' + extra, configError ? 'error' : 'success');
   } catch (err) {
@@ -730,31 +702,14 @@ function getMessages() {
 function setPrompt(text) { document.getElementById('promptEditor').value = text; }
 function getPrompt() { return document.getElementById('promptEditor').value; }
 
-function runMessagesToPrompt() {
+async function runMessagesToPrompt() {
   const messages = getMessages();
   if (!messages || messages.length === 0) return;
   if (!state.chatTemplate) { setPrompt('[Chat template 未加载 — 请点击"加载"按钮]'); return; }
   try {
-    setPrompt(renderChatTemplate(messages, true));
+    setPrompt(await renderChatTemplate(messages, true));
     runPromptToTokens();
   } catch (e) {
-    // ★ 修复：Nunjucks 无法渲染官方模板时（如 Qwen3.5 使用了 namespace、[::-1] 等 Jinja2 专有语法）
-    // 自动回退到内建简版 ChatML 模板
-    const fb = buildFallbackChatTemplate(state.modelPath);
-    if (fb) {
-      console.warn('Nunjucks 渲染失败，回退到内置简化模板:', e.message);
-      state.chatTemplate = fb;
-      try {
-        setPrompt(renderChatTemplate(messages, true));
-        runPromptToTokens();
-        showToast('Chat template 已自动切换为内置简化版（官方模板含 Nunjucks 不支持的高级语法）', 'success');
-        return;
-      } catch (e2) {
-        setPrompt('[渲染错误] ' + e2.message);
-        showToast('Chat Template 渲染失败: ' + e2.message, 'error');
-        return;
-      }
-    }
     setPrompt('[渲染错误] ' + e.message);
     showToast('Chat Template 渲染失败: ' + e.message, 'error');
   }
@@ -994,7 +949,7 @@ document.addEventListener('drop', async (e) => {
 
 // ===== 初始化 =====
 console.log('Tokenizer Tool 已就绪');
-console.log(' - Nunjucks: ' + (typeof nunjucks !== 'undefined' ? '已加载' : '未加载'));
+console.log(' - 模板引擎: Pyodide + Jinja2 (首次加载需 5-10s)');
 console.log(' - 支持 HuggingFace / ModelScope / 本地文件');
 console.log(' - 三向转换: Messages ↔ Prompt ↔ Token IDs');
 </script>
