@@ -195,8 +195,7 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all .1
 
 <div class="toolbar">
   <select id="sourceType" title="文件来源">
-    <option value="modelscope" selected>ModelScope</option>
-    <option value="huggingface">HuggingFace</option>
+    <option value="remote" selected>网络下载</option>
     <option value="local">本地文件</option>
   </select>
   <select id="modelPreset" title="快捷选择常见模型（自动匹配正确来源）">
@@ -207,7 +206,7 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all .1
     <option value="ms|Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B MoE · ModelScope</option>
     <option value="ms|ZhipuAI/GLM-5.2">GLM 5.2 · ModelScope</option>
   </select>
-  <input type="text" id="modelPath" placeholder="Qwen/Qwen2.5-7B-Instruct 或 qwen/Qwen2.5-7B-Instruct" value="qwen/Qwen2.5-7B-Instruct">
+  <input type="text" id="modelPath" placeholder="输入 ModelScope 模型 ID，如 qwen/Qwen2.5-7B-Instruct" value="qwen/Qwen2.5-7B-Instruct">
   <button id="btnLoad" class="btn-primary" title="加载 Tokenizer & Chat Template">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     加载
@@ -276,7 +275,7 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all .1
 // ============================================================
 const state = {
   tokenizerReady: false,
-  sourceType: 'modelscope',
+  sourceType: 'remote',
   modelPath: 'qwen/Qwen2.5-7B-Instruct',
   vocab: null,
   idToToken: null,
@@ -626,7 +625,7 @@ async function loadTokenizer() {
       }
       document.getElementById('sourceType').value = 'local'; // 与拖拽行为一致
     } else {
-      const loadFn = sourceType === 'huggingface' ? loadFromHF : loadFromMS;
+      const loadFn = loadFromMS;
       let tokenizerJson, configJson = null, jinjaText = null;
       const [tResult, cResult, jResult] = await Promise.allSettled([
         loadFn(modelPath, 'tokenizer.json'),
@@ -888,30 +887,20 @@ document.getElementById('sourceType').addEventListener('change', (e) => {
   if (e.target.value === 'local') {
     input.placeholder = '点击"加载"选择本地文件...';
     input.value = '';
-  } else if (e.target.value === 'huggingface') {
-    input.placeholder = 'Qwen/Qwen2.5-7B-Instruct';
   } else {
-    input.placeholder = 'qwen/Qwen2.5-7B-Instruct';
+    input.placeholder = '输入 ModelScope 模型 ID，如 qwen/Qwen2.5-7B-Instruct';
   }
 });
 
-// ★ 快捷模型选择：预设自带正确来源，不再靠首字母猜测
+// ★ 快捷模型选择
 document.getElementById('modelPreset').addEventListener('change', (e) => {
   const val = e.target.value;
   if (!val) return;
-  let source, modelId;
-  if (val.includes('|')) {
-    const sep = val.indexOf('|');
-    source = val.slice(0, sep) === 'hf' ? 'huggingface' : 'modelscope';
-    modelId = val.slice(sep + 1);
-  } else {
-    modelId = val;
-    const org = modelId.split('/')[0] || '';
-    source = (org && org === org.toLowerCase()) ? 'modelscope' : 'huggingface';
-  }
-  const sourceSelect = document.getElementById('sourceType');
-  sourceSelect.value = source;
-  sourceSelect.dispatchEvent(new Event('change'));
+  // 所有预设均为 ms|xxx 格式（ModelScope）
+  const sep = val.indexOf('|');
+  const modelId = sep >= 0 ? val.slice(sep + 1) : val;
+  document.getElementById('sourceType').value = 'remote';
+  document.getElementById('sourceType').dispatchEvent(new Event('change'));
   document.getElementById('modelPath').value = modelId;
   loadTokenizer();
   e.target.value = '';
