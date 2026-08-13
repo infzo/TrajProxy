@@ -1,3 +1,10 @@
+# ⚠️ REPOSITORY MOVED — THIS REPO IS NO LONGER MAINTAINED
+
+**This repository has been moved to [https://github.com/versatile-ai/trajproxy](https://github.com/versatile-ai/trajproxy).**
+**All future updates, issues, and pull requests should be directed to the new location.**
+
+---
+
 # TrajProxy - LLM 代理服务
 
 TrajProxy 是一个 LLM 请求代理系统，提供 OpenAI 兼容 API、Token-in-Token-out 模式、动态模型管理和请求轨迹记录功能。
